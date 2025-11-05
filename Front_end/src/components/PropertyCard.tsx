@@ -1,4 +1,4 @@
-import { Star, MapPin, Wifi, Coffee, Car } from "lucide-react";
+import { Star, MapPin, Wifi, Coffee, Car, LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface PropertyCardProps {
@@ -22,7 +22,7 @@ const PropertyCard = ({
   originalPrice,
   amenities = [],
 }: PropertyCardProps) => {
-  const amenityIcons: { [key: string]: any } = {
+  const amenityIcons: { [key: string]: LucideIcon } = {
     wifi: Wifi,
     breakfast: Coffee,
     parking: Car,
