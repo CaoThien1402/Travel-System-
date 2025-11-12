@@ -1,86 +1,47 @@
-import express from 'express';
-import { User } from '../models/User';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
+import { Router } from 'express';
 
-const router = express.Router();
+const router = Router();
 
-// Register
-router.post('/register', async (req, res) => {
-  try {
-    const { name, email, password } = req.body;
+// Simulated user database
+const users = [
+  { id: 1, name: 'Test User', email: 'test@example.com', password: 'password123' },
+];
 
-    // Check if user exists
-    let user = await User.findOne({ email });
-    if (user) {
-      return res.status(400).json({ message: 'User already exists' });
-    }
+// Register route
+router.post('/register', (req, res) => {
+  console.log('Request body:', req.body);
+  const { name, email, password } = req.body;
 
-    // Create new user
-    const hashedPassword = await bcrypt.hash(password, 10);
-    user = new User({
-      name,
-      email,
-      password: hashedPassword
-    });
-
-    await user.save();
-
-    // Generate JWT
-    const token = jwt.sign(
-      { userId: user.id },
-      process.env.JWT_SECRET || 'your-secret-key',
-      { expiresIn: '24h' }
-    );
-
-    res.status(201).json({
-      token,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email
-      }
-    });
-  } catch (error) {
-    res.status(500).json({ message: 'Server error' });
+  if (!name || !email || !password) {
+    return res.status(400).json({ message: 'Name, email, and password are required.' });
   }
+
+  const existingUser = users.find((user) => user.email === email);
+  if (existingUser) {
+    return res.status(400).json({ message: 'User already exists.' });
+  }
+
+  const newUser = { id: Date.now(), name, email, password };
+  users.push(newUser);
+
+  return res.status(201).json({ message: 'User registered successfully.', user: newUser });
 });
 
-// Login
-router.post('/login', async (req, res) => {
-  try {
-    const { email, password } = req.body;
+// Login route
+router.post('/login', (req, res) => {
+  console.log('Login request body:', req.body);
+  const { email, password } = req.body;
 
-    // Check if user exists
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(400).json({ message: 'Invalid credentials' });
-    }
-
-    // Check password
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(400).json({ message: 'Invalid credentials' });
-    }
-
-    // Generate JWT
-    const token = jwt.sign(
-      { userId: user.id },
-      process.env.JWT_SECRET || 'your-secret-key',
-      { expiresIn: '24h' }
-    );
-
-    res.json({
-      token,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email
-      }
-    });
-  } catch (error) {
-    res.status(500).json({ message: 'Server error' });
+  if (!email || !password) {
+    return res.status(400).json({ message: 'Email and password are required.' });
   }
+
+  const user = users.find((u) => u.email === email && u.password === password);
+  if (!user) {
+    return res.status(401).json({ message: 'Invalid email or password.' });
+  }
+
+  return res.status(200).json({ message: 'Login successful.', token: 'fake-jwt-token', user });
 });
 
 export default router;

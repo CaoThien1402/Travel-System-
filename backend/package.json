@@ -1,35 +1,23 @@
 {
-  "name": "backend",
+  "name": "travel-system-",
   "version": "1.0.0",
-  "description": "",
+  "description": "a project subject: computational thinking",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node dist/index.js",
+    "dev": "ts-node-dev src/index.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CaoThien1402/Travel-System-.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
-  "dependencies": {
-    "bcryptjs": "^3.0.3",
-    "cors": "^2.8.5",
-    "dotenv": "^17.2.3",
-    "express": "^5.1.0",
-    "express-validator": "^7.3.0",
-    "jsonwebtoken": "^9.0.2",
-    "mongoose": "^8.19.3"
+  "bugs": {
+    "url": "https://github.com/CaoThien1402/Travel-System-/issues"
   },
-  "devDependencies": {
-    "@types/bcryptjs": "^2.4.6",
-    "@types/cors": "^2.8.19",
-    "@types/express": "^5.0.5",
-    "@types/jest": "^30.0.0",
-    "@types/jsonwebtoken": "^9.0.10",
-    "@types/mongoose": "^5.11.96",
-    "@types/node": "^24.10.0",
-    "jest": "^30.2.0",
-    "nodemon": "^3.1.10",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
-  }
+  "homepage": "https://github.com/CaoThien1402/Travel-System-#readme"
 }
