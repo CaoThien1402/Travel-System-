@@ -1,0 +1,22 @@
+# --- Xử lý dữ liệu ---
+pandas
+
+# --- LangChain Framework (Core & Extensions) ---
+langchain
+langchain-core
+langchain-community
+langchain-text-splitters
+
+# --- Các Model AI & Embeddings ---
+langchain-google-genai
+langchain-huggingface
+sentence-transformers
+torch
+
+# --- Vector Database ---
+# Dùng faiss-cpu cho máy thường/server không GPU. 
+# Nếu có NVIDIA GPU, hãy đổi thành faiss-gpu để nhanh hơn.
+faiss-cpu
+
+# --- Tiện ích hệ thống ---
+python-dotenv
