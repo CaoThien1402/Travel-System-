@@ -1,0 +1,23 @@
+{
+  "name": "travel-system-",
+  "version": "1.0.0",
+  "description": "a project subject: computational thinking",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node dist/index.js",
+    "dev": "ts-node-dev src/index.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CaoThien1402/Travel-System-.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/CaoThien1402/Travel-System-/issues"
+  },
+  "homepage": "https://github.com/CaoThien1402/Travel-System-#readme"
+}
