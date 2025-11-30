@@ -1,0 +1,9 @@
+pandas
+numpy
+torch
+transformers
+sentence-transformers
+folium
+streamlit
+requests
+streamlit-folium
