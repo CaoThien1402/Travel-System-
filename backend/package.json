@@ -1,12 +1,16 @@
 {
-  "name": "travel-system-",
+  "name": "travel-system-backend",
   "version": "1.0.0",
   "description": "a project subject: computational thinking",
-  "main": "index.js",
+  "main": "dist/index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node dist/index.js",
-    "dev": "ts-node-dev src/index.ts"
+    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "build": "tsc && powershell -ExecutionPolicy Bypass -File copy-data.ps1",
+    "build:tsc": "tsc",
+    "postbuild": "powershell -ExecutionPolicy Bypass -File copy-data.ps1",
+    "clean": "rimraf dist"
   },
   "repository": {
     "type": "git",
@@ -19,5 +23,19 @@
   "bugs": {
     "url": "https://github.com/CaoThien1402/Travel-System-/issues"
   },
-  "homepage": "https://github.com/CaoThien1402/Travel-System-#readme"
+  "homepage": "https://github.com/CaoThien1402/Travel-System-#readme",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "csv-parser": "^3.0.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.10.5",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.3.3",
+    "rimraf": "^5.0.5"
+  }
 }

@@ -11,7 +11,7 @@ const Footer = () => {
               <div className="w-10 h-10 rounded-lg bg-gradient-hero flex items-center justify-center">
                 <Hotel className="w-6 h-6 text-primary-foreground" />
               </div>
-              <span className="text-xl font-bold text-foreground">StayEase</span>
+              <span className="text-xl font-bold text-foreground">3T2M1Stay</span>
             </div>
             <p className="text-sm text-muted-foreground mb-4">
               Nền tảng đặt phòng khách sạn và homestay hàng đầu Việt Nam. Tìm kiếm, so sánh và đặt phòng dễ dàng.
@@ -78,7 +78,7 @@ const Footer = () => {
             <ul className="space-y-3">
               <li className="flex items-start gap-2">
                 <Mail className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
-                <span className="text-sm text-muted-foreground">support@stayease.vn</span>
+                <span className="text-sm text-muted-foreground">support@3t2m1stay.vn</span>
               </li>
               <li className="flex items-start gap-2">
                 <Phone className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
@@ -96,7 +96,7 @@ const Footer = () => {
 
         <div className="mt-12 pt-8 border-t border-border text-center">
           <p className="text-sm text-muted-foreground">
-            © 2024 StayEase. Tất cả quyền được bảo lưu.
+            © 2024 3T2M1Stay. Tất cả quyền được bảo lưu.
           </p>
         </div>
       </div>

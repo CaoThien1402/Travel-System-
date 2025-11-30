@@ -14,7 +14,7 @@ const Navbar = () => {
             <div className="w-10 h-10 rounded-lg bg-gradient-hero flex items-center justify-center">
               <Hotel className="w-6 h-6 text-primary-foreground" />
             </div>
-            <span className="text-xl font-bold text-foreground">StayEase</span>
+            <span className="text-xl font-bold text-foreground">3T2M1Stay</span>
           </div>
 
           {/* Desktop Menu */}
@@ -54,7 +54,7 @@ const Navbar = () => {
             onClick={() => setIsMenuOpen(!isMenuOpen)}
             title={isMenuOpen ? "Close menu" : "Open menu"}
             aria-label={isMenuOpen ? "Close menu" : "Open menu"}
-            aria-expanded={isMenuOpen ? "true" : "false"}
+            aria-expanded={isMenuOpen ? true : false}
           >
             <Menu className="w-6 h-6 text-foreground" />
           </button>

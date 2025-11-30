@@ -1,28 +1,85 @@
+/**
+ * Main Server File - Entry point for 3T2M1Stay Backend API
+ * 
+ * This file sets up the Express server and configures all routes and middleware.
+ * Perfect for beginners to understand how a Node.js/Express backend works!
+ */
+
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { Request, Response } from 'express';
-import authRoutes from './routes/auth';
+import { Request, Response, NextFunction } from 'express';
 
-// Load environment variables
+// Import our route handlers
+import authRoutes from './routes/auth';
+import propertiesRoutes from './routes/properties';
+import chatRoutes from './routes/chat';
+
+// Load environment variables from .env file
 dotenv.config();
 
+// Create Express app instance
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middleware
-app.use(cors());
-app.use(express.json());
+// ========================================
+// MIDDLEWARE SETUP
+// ========================================
+// Middleware runs before your routes and processes requests
 
-// Routes
+app.use(cors()); // Enable CORS - allows frontend to talk to backend
+app.use(express.json()); // Parse JSON request bodies
+app.use(express.urlencoded({ extended: true })); // Parse URL-encoded data
+
+// ========================================
+// ROUTES SETUP
+// ========================================
+// Define what happens when users visit different URLs
+
+// Home route - shows API information
 app.get('/', (req: Request, res: Response) => {
-  res.send('Welcome to the Travel System API!');
+  res.json({ 
+    message: 'Welcome to 3T2M1Stay API!',
+    version: '1.0.0',
+    endpoints: {
+      auth: '/api/auth - User authentication',
+      properties: '/api/properties - Hotel listings',
+      chat: '/api/chat - AI Chatbot'
+    }
+  });
 });
 
-// Register routes
-app.use('/api/auth', authRoutes);
+// Register all API routes
+app.use('/api/auth', authRoutes);           // User login/register
+app.use('/api/properties', propertiesRoutes); // Hotel operations
+app.use('/api', chatRoutes);                  // AI Chatbot
 
-// Start server
+// ========================================
+// ERROR HANDLING
+// ========================================
+
+// Handle 404 - Route not found
+app.use((req: Request, res: Response) => {
+  res.status(404).json({ 
+    message: 'Route not found',
+    availableRoutes: ['/api/auth', '/api/properties', '/api/chat']
+  });
+});
+
+// Handle all other errors
+app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+  console.error('Error:', err.message);
+  res.status(500).json({ 
+    message: 'Internal server error',
+    error: process.env.NODE_ENV === 'development' ? err.message : undefined
+  });
+});
+
+// ========================================
+// START SERVER
+// ========================================
 app.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
+  console.log(`🚀 Server running: http://localhost:${PORT}`);
+  console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`✅ Ready to accept requests!`);
 });
