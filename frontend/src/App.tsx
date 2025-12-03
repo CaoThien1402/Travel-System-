@@ -7,6 +7,7 @@ import NotFound from "./pages/NotFound";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import PropertyDetail from "./pages/PropertyDetail";
+import HotelSearch from "./pages/HotelSearch";
 import { AuthProvider } from "./contexts/AuthContext";
 import Chatbot from "./components/Chatbot";
 
@@ -20,6 +21,7 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<Index />} />
+            <Route path="/search" element={<HotelSearch />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             <Route path="/properties/:id" element={<PropertyDetail />} />

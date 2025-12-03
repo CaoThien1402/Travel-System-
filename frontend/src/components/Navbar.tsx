@@ -19,18 +19,12 @@ const Navbar = () => {
 
           {/* Desktop Menu */}
           <div className="hidden md:flex items-center gap-6">
-            <a href="/" className="text-foreground hover:text-primary transition-colors font-medium">
+            <Link to="/" className="text-foreground hover:text-primary transition-colors font-medium">
               Trang chủ
-            </a>
-            <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
-              Khách sạn
-            </a>
-            <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
-              Homestay
-            </a>
-            <a href="#" className="text-muted-foreground hover:text-primary transition-colors">
-              Ưu đãi
-            </a>
+            </Link>
+            <Link to="/search" className="text-muted-foreground hover:text-primary transition-colors">
+              Tìm khách sạn
+            </Link>
           </div>
 
           <div className="hidden md:flex items-center gap-3">
@@ -64,18 +58,12 @@ const Navbar = () => {
         {isMenuOpen && (
           <div className="md:hidden py-4 border-t border-border">
             <div className="flex flex-col gap-3">
-              <a href="/" className="text-foreground hover:text-primary transition-colors py-2 font-medium">
+              <Link to="/" className="text-foreground hover:text-primary transition-colors py-2 font-medium">
                 Trang chủ
-              </a>
-              <a href="#" className="text-muted-foreground hover:text-primary transition-colors py-2">
-                Khách sạn
-              </a>
-              <a href="#" className="text-muted-foreground hover:text-primary transition-colors py-2">
-                Homestay
-              </a>
-              <a href="#" className="text-muted-foreground hover:text-primary transition-colors py-2">
-                Ưu đãi
-              </a>
+              </Link>
+              <Link to="/search" className="text-muted-foreground hover:text-primary transition-colors py-2">
+                Tìm khách sạn
+              </Link>
               <div className="flex flex-col gap-2 mt-3 pt-3 border-t border-border">
                 <Link to="/login">
                   <Button variant="ghost" size="sm" className="w-full justify-center">

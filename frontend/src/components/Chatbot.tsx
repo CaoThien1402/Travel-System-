@@ -104,18 +104,27 @@ const Chatbot = () => {
         className={cn(
           "fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full shadow-lg transition-all duration-300",
           "bg-gradient-to-r from-primary to-primary-hover hover:scale-110",
-          isOpen && "scale-0"
+          isOpen && "opacity-0 pointer-events-none"
         )}
         size="icon"
       >
         <MessageCircle className="h-6 w-6" />
       </Button>
 
-      {/* Chat Window */}
+      {/* Overlay */}
       <div
         className={cn(
-          "fixed bottom-6 right-6 z-50 w-[380px] h-[600px] bg-card border border-border rounded-2xl shadow-2xl transition-all duration-300 flex flex-col overflow-hidden",
-          isOpen ? "scale-100 opacity-100" : "scale-0 opacity-0"
+          "fixed inset-0 bg-black/50 z-40 transition-opacity duration-300",
+          isOpen ? "opacity-100" : "opacity-0 pointer-events-none"
+        )}
+        onClick={() => setIsOpen(false)}
+      />
+
+      {/* Chat Sidebar */}
+      <div
+        className={cn(
+          "fixed top-0 right-0 z-50 w-full md:w-1/3 h-full bg-card shadow-2xl transition-transform duration-300 flex flex-col",
+          isOpen ? "translate-x-0" : "translate-x-full"
         )}
       >
         {/* Header */}
@@ -140,8 +149,8 @@ const Chatbot = () => {
         </div>
 
         {/* Messages */}
-        <ScrollArea className="flex-1 p-4" ref={scrollRef}>
-          <div className="space-y-4">
+        <ScrollArea className="flex-1 p-6" ref={scrollRef}>
+          <div className="space-y-4 max-w-4xl mx-auto">
             {messages.map((message) => (
               <div
                 key={message.id}
@@ -151,19 +160,19 @@ const Chatbot = () => {
                 )}
               >
                 {message.sender === 'bot' && (
-                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                    <Bot className="w-5 h-5 text-primary" />
+                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                    <Bot className="w-6 h-6 text-primary" />
                   </div>
                 )}
                 <div
                   className={cn(
-                    "max-w-[75%] rounded-2xl px-4 py-2 text-sm",
+                    "max-w-[80%] rounded-2xl px-4 py-3 text-sm",
                     message.sender === 'user'
                       ? "bg-primary text-primary-foreground rounded-br-sm"
                       : "bg-muted text-foreground rounded-bl-sm"
                   )}
                 >
-                  <p className="whitespace-pre-wrap">{message.text}</p>
+                  <p className="whitespace-pre-wrap leading-relaxed">{message.text}</p>
                   <span className="text-xs opacity-60 mt-1 block">
                     {message.timestamp.toLocaleTimeString('vi-VN', {
                       hour: '2-digit',
@@ -172,16 +181,16 @@ const Chatbot = () => {
                   </span>
                 </div>
                 {message.sender === 'user' && (
-                  <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
-                    <User className="w-5 h-5 text-white" />
+                  <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
+                    <User className="w-6 h-6 text-white" />
                   </div>
                 )}
               </div>
             ))}
             {isLoading && (
               <div className="flex gap-3 justify-start">
-                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Bot className="w-5 h-5 text-primary" />
+                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Bot className="w-6 h-6 text-primary" />
                 </div>
                 <div className="bg-muted rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-2">
                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -193,32 +202,34 @@ const Chatbot = () => {
         </ScrollArea>
 
         {/* Input */}
-        <div className="p-4 border-t border-border bg-background">
-          <div className="flex gap-2">
-            <Input
-              value={inputMessage}
-              onChange={(e) => setInputMessage(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="Nhập tin nhắn của bạn..."
-              disabled={isLoading}
-              className="flex-1"
-            />
-            <Button
-              onClick={handleSendMessage}
-              disabled={!inputMessage.trim() || isLoading}
-              size="icon"
-              className="bg-primary hover:bg-primary-hover"
-            >
-              {isLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Send className="h-4 w-4" />
-              )}
-            </Button>
+        <div className="p-6 border-t border-border bg-background">
+          <div className="max-w-4xl mx-auto">
+            <div className="flex gap-2">
+              <Input
+                value={inputMessage}
+                onChange={(e) => setInputMessage(e.target.value)}
+                onKeyPress={handleKeyPress}
+                placeholder="Nhập tin nhắn của bạn..."
+                disabled={isLoading}
+                className="flex-1 h-12"
+              />
+              <Button
+                onClick={handleSendMessage}
+                disabled={!inputMessage.trim() || isLoading}
+                size="icon"
+                className="bg-primary hover:bg-primary-hover h-12 w-12"
+              >
+                {isLoading ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <Send className="h-5 w-5" />
+                )}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground mt-3 text-center">
+              Powered by AI • 3T2M1Stay
+            </p>
           </div>
-          <p className="text-xs text-muted-foreground mt-2 text-center">
-            Powered by AI • 3T2M1Stay
-          </p>
         </div>
       </div>
     </>

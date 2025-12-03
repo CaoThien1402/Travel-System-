@@ -1,8 +1,15 @@
 import { Search, MapPin, Calendar, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useNavigate } from "react-router-dom";
 
 const SearchBar = () => {
+  const navigate = useNavigate();
+
+  const handleSearch = () => {
+    navigate('/search');
+  };
+
   return (
     <div className="bg-card rounded-2xl shadow-large p-4 md:p-6 w-full max-w-5xl mx-auto">
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -59,6 +66,7 @@ const SearchBar = () => {
       </div>
 
       <Button 
+        onClick={handleSearch}
         className="w-full mt-4 bg-primary hover:bg-primary-hover text-primary-foreground h-12 text-base font-semibold shadow-medium"
       >
         <Search className="w-5 h-5 mr-2" />
