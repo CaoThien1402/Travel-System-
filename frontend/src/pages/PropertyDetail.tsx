@@ -1,258 +1,432 @@
-import { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import {
+  ArrowLeft,
+  ExternalLink,
+  Globe,
+  MapPin,
+  Phone,
+  ShieldCheck,
+  Sparkles,
+  Star,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
+import HotelMap from "@/components/HotelMap";
 
-interface Review {
-  user: {
-    name: string;
-  };
-  rating: number;
-  comment: string;
-  date: string;
-}
-
-interface Property {
-  id: string;
-  title: string;
-  description: string;
+interface Hotel {
+  id: number;
+  hotelname: string;
+  address: string;
+  street: string;
+  district: string;
+  city: string;
+  lat: number;
+  lon: number;
+  categoryName: string;
+  categories: string[];
+  description1?: string;
+  description2?: string;
+  url_google?: string;
+  website?: string;
+  phone?: string;
   price: number;
-  location: {
-    address: string;
-    city: string;
-    country: string;
-  };
-  images: string[];
-  rating: number;
-  host: {
-    name: string;
-    email: string;
-  };
-  reviews: Review[];
-  amenities: string[];
+  imageUrl?: string;
+  star: number;
+  rank?: number;
+  totalScore?: number;
+  reviewsCount?: number;
+  amenities?: string[];
+  reviews?: string[];
 }
+
+const formatCurrency = (value?: number) => {
+  if (!value || Number.isNaN(value)) return "—";
+  return `${value.toLocaleString("vi-VN")} ₫`;
+};
+
+const formatStarText = (star?: number) => {
+  if (!star || Number.isNaN(star)) return "Chưa xếp hạng";
+  return `${star.toFixed(1)} sao`;
+};
+
+const cleanAddress = (value?: string) => {
+  if (!value) return "";
+  let result = value.replace(/\s+/g, " ").trim();
+  const headerIdx = result.toLowerCase().indexOf("hotelname,address");
+  if (headerIdx !== -1) {
+    result = result.slice(0, headerIdx).trim().replace(/[,\s]+$/, "");
+  }
+  return result;
+};
+
+const InfoBadge = ({ label }: { label: string }) => (
+  <span className="inline-flex items-center rounded-full bg-primary/10 text-primary px-3 py-1 text-xs font-medium">
+    {label}
+  </span>
+);
+
+const AmenityTag = ({ text }: { text: string }) => (
+  <span className="inline-flex items-center rounded-md bg-muted px-3 py-2 text-sm text-foreground">
+    {text}
+  </span>
+);
+
+const ContentSkeleton = () => (
+  <div className="container mx-auto px-4 py-8 space-y-6">
+    <div className="flex items-center gap-3">
+      <Skeleton className="h-10 w-10 rounded-lg" />
+      <div className="space-y-2">
+        <Skeleton className="h-6 w-48" />
+        <Skeleton className="h-4 w-32" />
+      </div>
+    </div>
+    <Skeleton className="h-72 w-full rounded-2xl" />
+    <div className="grid lg:grid-cols-3 gap-6">
+      <Skeleton className="h-96 w-full rounded-xl" />
+      <Skeleton className="h-96 w-full rounded-xl lg:col-span-2" />
+    </div>
+  </div>
+);
 
 export default function PropertyDetail() {
   const { id } = useParams<{ id: string }>();
-  const { isAuthenticated, user } = useAuth();
-  const [property, setProperty] = useState<Property | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [reviewInput, setReviewInput] = useState({ rating: 5, comment: '' });
+  const navigate = useNavigate();
+  const [hotel, setHotel] = useState<Hotel | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [expandedReviews, setExpandedReviews] = useState<Record<number, boolean>>({});
 
   useEffect(() => {
-    const fetchProperty = async () => {
+    const fetchHotel = async () => {
+      if (!id) {
+        setError("Thiếu mã khách sạn");
+        setIsLoading(false);
+        return;
+      }
       try {
         const response = await fetch(`http://localhost:5000/api/properties/${id}`);
         const data = await response.json();
 
         if (!response.ok) {
-          throw new Error(data.message || 'Failed to fetch property');
+          throw new Error(data.message || "Không thể tải thông tin khách sạn");
         }
 
-        setProperty(data);
+        setHotel(data);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'An error occurred');
+        setError(err instanceof Error ? err.message : "Đã có lỗi xảy ra");
       } finally {
-        setLoading(false);
+        setIsLoading(false);
       }
     };
 
-    if (id) {
-      fetchProperty();
-    }
+    fetchHotel();
   }, [id]);
 
-  const handleReviewSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!isAuthenticated) return;
+  const locationLabel = useMemo(() => {
+    if (!hotel) return "";
+    const parts = [hotel.street || hotel.district, hotel.city].filter(Boolean);
+    return parts.join(", ");
+  }, [hotel]);
 
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:5000/api/properties/${id}/reviews`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(reviewInput),
-      });
+  const displayAddress = useMemo(() => cleanAddress(hotel?.address || ""), [hotel]);
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Failed to submit review');
-      }
-
-      setProperty(data);
-      setReviewInput({ rating: 5, comment: '' });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
-    }
-  };
-
-  if (loading) {
-    return <div className="container mx-auto px-4 py-8">Loading...</div>;
+  if (isLoading) {
+    return <ContentSkeleton />;
   }
 
-  if (error || !property) {
+  if (error || !hotel) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="text-center text-destructive">
-          <p>{error || 'Property not found'}</p>
-        </div>
+      <div className="container mx-auto px-4 py-12 space-y-6">
+        <Button variant="ghost" onClick={() => navigate(-1)} className="gap-2">
+          <ArrowLeft className="h-4 w-4" />
+          Quay lại
+        </Button>
+        <Card className="p-8 text-center">
+          <h2 className="text-2xl font-semibold mb-3">Không tìm thấy khách sạn</h2>
+          <p className="text-muted-foreground mb-6">
+            {error || "Vui lòng thử lại hoặc chọn khách sạn khác."}
+          </p>
+          <div className="flex items-center justify-center gap-3">
+            <Button onClick={() => navigate("/search")}>Quay về trang tìm kiếm</Button>
+            <Button variant="outline" onClick={() => window.location.reload()}>
+              Thử tải lại
+            </Button>
+          </div>
+        </Card>
       </div>
     );
   }
 
+  const {
+    hotelname,
+    imageUrl,
+    star,
+    totalScore,
+    reviewsCount,
+    price,
+    categoryName,
+    categories,
+    description1,
+    description2,
+    url_google,
+    website,
+    phone,
+    amenities = [],
+    reviews = [],
+    rank,
+    district,
+    lat,
+    lon,
+  } = hotel;
+
+  const hasCoordinates = lat !== 0 && lon !== 0;
+
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        <div className="space-y-6">
-          <h1 className="text-3xl font-bold">{property.title}</h1>
+    <div className="bg-background min-h-screen">
+      <div className="container mx-auto px-4 py-8 space-y-8">
+        <div className="flex items-center justify-between gap-3">
+          <Button variant="ghost" onClick={() => navigate(-1)} className="gap-2">
+            <ArrowLeft className="h-4 w-4" />
+            Quay lại
+          </Button>
           <div className="flex items-center gap-2">
-            <div className="flex items-center">
-              <svg
-                className="w-5 h-5 text-yellow-400"
-                fill="currentColor"
-                viewBox="0 0 20 20"
-              >
-                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-              </svg>
-              <span className="ml-1 font-medium">
-                {property.rating ? property.rating.toFixed(1) : 'N/A'}
-              </span>
-            </div>
-            <span className="text-muted-foreground">
-              • {property.location.city}, {property.location.country}
-            </span>
-          </div>
-
-          <div className="aspect-video rounded-lg overflow-hidden">
-            {property.images && property.images.length > 0 ? (
-              <img
-                src={property.images[0]}
-                alt={property.title}
-                className="object-cover w-full h-full"
-              />
-            ) : (
-              <div className="flex items-center justify-center w-full h-full bg-gray-200">
-                <span className="text-gray-500">No image available</span>
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-4">
-            <h2 className="text-xl font-semibold">About this place</h2>
-            <p className="text-muted-foreground">{property.description}</p>
-          </div>
-
-          <div className="space-y-4">
-            <h2 className="text-xl font-semibold">Amenities</h2>
-            <div className="grid grid-cols-2 gap-2">
-              {property.amenities.map((amenity) => (
-                <div key={amenity} className="flex items-center gap-2">
-                  <svg
-                    className="w-5 h-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M5 13l4 4L19 7"
-                    />
-                  </svg>
-                  <span>{amenity}</span>
-                </div>
-              ))}
-            </div>
+            <InfoBadge label={categoryName || "Khách sạn"} />
+            {rank ? <InfoBadge label={`Hạng #${rank}`} /> : null}
+            <InfoBadge label={district || "Hồ Chí Minh"} />
           </div>
         </div>
 
-        <div className="space-y-6">
-          <Card className="p-6">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-2xl font-bold">
-                  ${property.price}
-                  <span className="text-sm font-normal text-muted-foreground">
-                    /night
-                  </span>
-                </span>
+        <div className="grid gap-6 lg:grid-cols-[2fr,1fr]">
+          <Card className="overflow-hidden">
+            <div className="relative h-[360px] bg-muted">
+              {imageUrl ? (
+                <img
+                  src={imageUrl}
+                  alt={hotelname}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-muted-foreground">
+                  Không có hình ảnh
+                </div>
+              )}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+              <div className="absolute bottom-4 left-4 right-4 flex flex-wrap items-center justify-between gap-3 text-white">
+                <div>
+                  <div className="flex items-center gap-2 text-sm opacity-90">
+                    <MapPin className="h-4 w-4" />
+                    <span>{locationLabel || "Hồ Chí Minh"}</span>
+                  </div>
+                  <h1 className="text-2xl md:text-3xl font-bold mt-1">{hotelname}</h1>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 rounded-full bg-white/10 px-3 py-2">
+                    <Star className="h-4 w-4 text-yellow-300" />
+                    <span className="font-semibold">{formatStarText(star)}</span>
+                  </div>
+                  {totalScore ? (
+                    <div className="rounded-full bg-white/10 px-3 py-2 text-sm">
+                      Điểm đánh giá: <span className="font-semibold">{totalScore.toFixed(1)}</span>
+                      {reviewsCount ? ` (${reviewsCount} lượt)` : ""}
+                    </div>
+                  ) : null}
+                </div>
               </div>
-
-              <Button className="w-full">Book now</Button>
             </div>
           </Card>
 
-          <div className="space-y-4">
-            <h2 className="text-xl font-semibold">Reviews</h2>
-            {isAuthenticated && (
-              <form onSubmit={handleReviewSubmit} className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Rating</label>
-                  <Input
-                    type="number"
-                    min="1"
-                    max="5"
-                    value={reviewInput.rating}
-                    onChange={(e) =>
-                      setReviewInput({
-                        ...reviewInput,
-                        rating: parseInt(e.target.value),
-                      })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Comment</label>
-                  <Textarea
-                    value={reviewInput.comment}
-                    onChange={(e) =>
-                      setReviewInput({
-                        ...reviewInput,
-                        comment: e.target.value,
-                      })
-                    }
-                    placeholder="Share your experience..."
-                  />
-                </div>
-                <Button type="submit">Submit Review</Button>
-              </form>
-            )}
+          <Card className="p-6 space-y-4 self-start sticky top-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-muted-foreground text-sm">Giá mỗi đêm từ</p>
+                <p className="text-3xl font-bold text-primary">{formatCurrency(price)}</p>
+              </div>
+              <Sparkles className="h-6 w-6 text-primary" />
+            </div>
+            <Separator />
+            <div className="space-y-2 text-sm text-muted-foreground">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4 text-primary" />
+                <span>Hỗ trợ hoàn hủy linh hoạt</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-primary" />
+                <span>Ưu tiên lựa chọn ở {district}</span>
+              </div>
+            </div>
+            <div className="flex flex-col gap-3 pt-2">
+              <Button className="w-full">Đặt ngay</Button>
+              <div className="grid grid-cols-2 gap-3">
+                {phone ? (
+                  <Button asChild variant="outline" className="w-full">
+                    <a href={`tel:${phone}`}>
+                      <Phone className="h-4 w-4 mr-2" />
+                      Gọi ngay
+                    </a>
+                  </Button>
+                ) : null}
+                {url_google ? (
+                  <Button asChild variant="outline" className="w-full">
+                    <a href={url_google} target="_blank" rel="noreferrer">
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      Google Maps
+                    </a>
+                  </Button>
+                ) : null}
+                {website ? (
+                  <Button asChild variant="outline" className="w-full col-span-2">
+                    <a href={website} target="_blank" rel="noreferrer">
+                      <Globe className="h-4 w-4 mr-2" />
+                      Website khách sạn
+                    </a>
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          </Card>
+        </div>
 
-            <div className="space-y-4">
-              {property.reviews.map((review, index) => (
-                <Card key={index} className="p-4">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="font-medium">{review.user.name}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {new Date(review.date).toLocaleDateString()}
-                      </p>
-                    </div>
-                    <div className="flex items-center">
-                      <svg
-                        className="w-5 h-5 text-yellow-400"
-                        fill="currentColor"
-                        viewBox="0 0 20 20"
-                      >
-                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                      </svg>
-                      <span className="ml-1">{review.rating}</span>
-                    </div>
-                  </div>
-                  <p className="mt-2">{review.comment}</p>
-                </Card>
+        <div className="grid gap-6 lg:grid-cols-[2fr,1fr]">
+          <Card className="p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-semibold">Tổng quan</h2>
+              <div className="flex flex-wrap gap-2">
+                {categories?.map((cat) => (
+                  <InfoBadge key={cat} label={cat} />
+                ))}
+              </div>
+            </div>
+            <div className="prose prose-neutral dark:prose-invert max-w-none text-muted-foreground">
+              <p>{description1 || "Chưa có mô tả ngắn."}</p>
+              {description2 ? <p className="mt-3">{description2}</p> : null}
+            </div>
+          </Card>
+
+          <Card className="p-6 space-y-3">
+            <h3 className="text-lg font-semibold">Điểm nổi bật</h3>
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div className="rounded-lg border p-3">
+                <p className="text-muted-foreground">Hạng sao</p>
+                <p className="font-semibold">{formatStarText(star)}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-muted-foreground">Điểm đánh giá</p>
+                <p className="font-semibold">
+                  {totalScore ? `${totalScore.toFixed(1)} / 5` : "Chưa có"}
+                </p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-muted-foreground">Số lượt đánh giá</p>
+                <p className="font-semibold">{reviewsCount || "—"}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-muted-foreground">Mức giá</p>
+                <p className="font-semibold">{formatCurrency(price)}</p>
+              </div>
+            </div>
+          </Card>
+        </div>
+
+        <Card className="p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xl font-semibold">Tiện ích & dịch vụ</h3>
+            <p className="text-sm text-muted-foreground">
+              {amenities.length} tiện ích đã cập nhật
+            </p>
+          </div>
+          {amenities.length ? (
+            <div className="flex flex-wrap gap-2">
+              {amenities.map((amenity) => (
+                <AmenityTag key={amenity} text={amenity} />
               ))}
             </div>
-          </div>
+          ) : (
+            <p className="text-muted-foreground text-sm">
+              Chưa có thông tin tiện ích cho khách sạn này.
+            </p>
+          )}
+        </Card>
+
+        <div className="space-y-6">
+          <Card className="p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold">Vị trí</h3>
+              {url_google ? (
+                <a
+                  href={url_google}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-primary text-sm flex items-center gap-1 hover:underline"
+                >
+                  Mở bản đồ
+                  <ExternalLink className="h-4 w-4" />
+                </a>
+              ) : null}
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {displayAddress || "Chưa có địa chỉ chi tiết"}
+            </p>
+            {hasCoordinates ? (
+              <div className="h-72 overflow-hidden rounded-xl border">
+                <HotelMap hotels={[hotel]} center={[hotel.lat, hotel.lon]} zoom={15} />
+              </div>
+            ) : (
+              <div className="rounded-xl border p-4 text-sm text-muted-foreground">
+                Chưa có tọa độ để hiển thị bản đồ.
+              </div>
+            )}
+          </Card>
+
+          <Card className="p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-semibold">Đánh giá gần đây</h3>
+              <InfoBadge label={`${reviews.length || 0} nhận xét`} />
+            </div>
+            {reviews.length ? (
+              <div className="grid gap-3 md:grid-cols-2">
+                {reviews.slice(0, 6).map((review, idx) => {
+                  const isExpanded = expandedReviews[idx];
+                  const isLong = review.length > 220;
+                  return (
+                    <div key={`${review}-${idx}`} className="rounded-lg border p-4 space-y-2 bg-card/50">
+                      <div className="flex items-center justify-between gap-2 text-sm text-muted-foreground">
+                        <div className="flex items-center gap-2">
+                          <Star className="h-4 w-4 text-yellow-400" />
+                          <span>Khách đã lưu trú</span>
+                        </div>
+                        {isLong ? (
+                          <button
+                            className="text-primary text-xs font-medium hover:underline"
+                            onClick={() =>
+                              setExpandedReviews((prev) => ({ ...prev, [idx]: !prev[idx] }))
+                            }
+                          >
+                            {isExpanded ? "Thu gọn" : "Xem thêm"}
+                          </button>
+                        ) : null}
+                      </div>
+                      <p
+                        className={cn(
+                          "text-foreground leading-relaxed text-sm",
+                          !isExpanded && "line-clamp-5"
+                        )}
+                      >
+                        {review}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-muted-foreground text-sm">
+                Chưa có đánh giá nào được ghi nhận.
+              </p>
+            )}
+          </Card>
         </div>
       </div>
     </div>
