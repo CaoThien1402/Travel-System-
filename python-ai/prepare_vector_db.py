@@ -10,7 +10,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 
 MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
-CSV_PATH = "data/district1.csv"
+CSV_PATH = "backend/src/data/district1.csv"
 VECTOR_DB_PATH = "vectorstores/db_faiss"
 
 
