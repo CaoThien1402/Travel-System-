@@ -1,135 +1,357 @@
-/**
- * Authentication Routes - Handles user login and registration
- * 
- * Routes in this file:
- * - POST /api/auth/register - Create new user account
- * - POST /api/auth/login - Login existing user
- * - POST /api/auth/logout - Logout user
- * 
- * For beginners: This is a simple in-memory auth system.
- * In production, use a database and proper password hashing!
- */
-
 import { Router, Request, Response } from 'express';
+import { supabase, supabaseAdmin } from '../supabase';
 
 const router = Router();
 
-// User data structure
-interface User {
-  id: number;
-  name: string;
-  email: string;
-  password: string; // In production: NEVER store plain passwords!
-}
-
-// Temporary in-memory user storage (resets when server restarts)
-// TODO: Replace with database (MongoDB, PostgreSQL, etc.)
-const users: User[] = [
-  { 
-    id: 1, 
-    name: 'Test User', 
-    email: 'test@example.com', 
-    password: 'password123' // Demo only!
-  },
-];
-
-// ========================================
-// REGISTER NEW USER
-// ========================================
-// POST /api/auth/register
-router.post('/register', (req: Request, res: Response) => {
+// ==========================================
+// 🔐 ĐĂNG KÝ TÀI KHOẢN MỚI
+// ==========================================
+router.post('/register', async (req: Request, res: Response) => {
   try {
-    console.log('Registration attempt:', req.body);
-    
-    // Get user data from request
-    const { name, email, password } = req.body;
+    const { email, password, fullName } = req.body;
 
-    // Validation: Check all required fields
-    if (!name || !email || !password) {
-      return res.status(400).json({ 
-        message: 'Name, email, and password are required.' 
+    // Validation
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email và password là bắt buộc!'
       });
     }
 
-    // Validation: Check email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return res.status(400).json({ message: 'Invalid email format.' });
+    if (password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password phải có ít nhất 6 ký tự!'
+      });
     }
 
-    // Check if user already exists
-    const existingUser = users.find((user) => user.email === email);
-    if (existingUser) {
-      return res.status(400).json({ message: 'User already exists.' });
-    }
-
-    // Create new user
-    const newUser: User = { 
-      id: Date.now(), // Simple ID generation
-      name, 
-      email, 
-      password // WARNING: In production, hash this password!
-    };
-    users.push(newUser);
-
-    // Don't send password back to client (security best practice)
-    const { password: _, ...userWithoutPassword } = newUser;
-
-    return res.status(201).json({ 
-      message: 'User registered successfully.', 
-      user: userWithoutPassword 
+    // Đăng ký với Supabase Auth
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          full_name: fullName || '',
+        },
+        // Email confirmation sẽ được gửi tự động
+        emailRedirectTo: `${process.env.FRONTEND_URL}/auth/callback`
+      }
     });
-  } catch (error) {
-    console.error('Registration error:', error);
-    return res.status(500).json({ message: 'Registration failed' });
+
+    if (error) {
+      return res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+
+    // Tạo profile trong bảng profiles (nếu có)
+    if (data.user) {
+      const { error: profileError } = await supabaseAdmin
+        .from('profiles')
+        .insert({
+          id: data.user.id,
+          email: data.user.email,
+          full_name: fullName || '',
+          avatar_url: null,
+          created_at: new Date().toISOString()
+        });
+
+      if (profileError) {
+        console.error('Error creating profile:', profileError);
+      }
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: 'Đăng ký thành công! Vui lòng kiểm tra email để xác nhận tài khoản.',
+      user: {
+        id: data.user?.id,
+        email: data.user?.email
+      }
+    });
+
+  } catch (error: any) {
+    console.error('Register error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi server khi đăng ký!'
+    });
   }
 });
 
-// ========================================
-// LOGIN USER
-// ========================================
-// POST /api/auth/login
-router.post('/login', (req: Request, res: Response) => {
+// ==========================================
+// 🔓 ĐĂNG NHẬP
+// ==========================================
+router.post('/login', async (req: Request, res: Response) => {
   try {
-    console.log('Login attempt:', req.body);
-    
-    // Get credentials from request
     const { email, password } = req.body;
 
     // Validation
     if (!email || !password) {
-      return res.status(400).json({ 
-        message: 'Email and password are required.' 
+      return res.status(400).json({
+        success: false,
+        message: 'Email và password là bắt buộc!'
       });
     }
 
-    // Find user with matching email and password
-    const user = users.find((u) => u.email === email && u.password === password);
-    
-    if (!user) {
-      return res.status(401).json({ message: 'Invalid email or password.' });
+    // Đăng nhập với Supabase
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    });
+
+    if (error) {
+      return res.status(401).json({
+        success: false,
+        message: 'Email hoặc password không đúng!'
+      });
     }
 
-    // Don't send password back to client
-    const { password: _, ...userWithoutPassword } = user;
+    // Kiểm tra email đã được confirm chưa
+    if (!data.user?.email_confirmed_at) {
+      return res.status(403).json({
+        success: false,
+        message: 'Vui lòng xác nhận email trước khi đăng nhập!'
+      });
+    }
 
-    // In production: Generate a real JWT token here
-    const token = `fake-jwt-token-${user.id}`;
+    // Lấy thông tin profile từ database
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('*')
+      .eq('id', data.user.id)
+      .single();
 
-    return res.status(200).json({ 
-      message: 'Login successful.', 
-      token, 
-      user: userWithoutPassword 
+    return res.status(200).json({
+      success: true,
+      message: 'Đăng nhập thành công!',
+      user: {
+        id: data.user.id,
+        email: data.user.email,
+        full_name: profile?.full_name || '',
+        avatar_url: profile?.avatar_url || null
+      },
+      session: {
+        access_token: data.session?.access_token,
+        refresh_token: data.session?.refresh_token,
+        expires_at: data.session?.expires_at
+      }
     });
-  } catch (error) {
+
+  } catch (error: any) {
     console.error('Login error:', error);
-    return res.status(500).json({ message: 'Login failed' });
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi server khi đăng nhập!'
+    });
   }
 });
 
-// Logout route (for future use)
-router.post('/logout', (req: Request, res: Response) => {
-  return res.status(200).json({ message: 'Logout successful.' });
+// ==========================================
+// 🚪 ĐĂNG XUẤT
+// ==========================================
+router.post('/logout', async (req: Request, res: Response) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+
+    if (token) {
+      // Revoke token on Supabase
+      await supabase.auth.signOut();
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Đăng xuất thành công!'
+    });
+
+  } catch (error: any) {
+    console.error('Logout error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi đăng xuất!'
+    });
+  }
+});
+
+// ==========================================
+// 👤 LẤY THÔNG TIN USER HIỆN TẠI
+// ==========================================
+router.get('/me', async (req: Request, res: Response) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: 'Không tìm thấy token!'
+      });
+    }
+
+    // Verify token và lấy user
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+
+    if (error || !user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Token không hợp lệ!'
+      });
+    }
+
+    // Lấy profile
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .single();
+
+    return res.status(200).json({
+      success: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        full_name: profile?.full_name || '',
+        avatar_url: profile?.avatar_url || null,
+        created_at: profile?.created_at
+      }
+    });
+
+  } catch (error: any) {
+    console.error('Get user error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi lấy thông tin user!'
+    });
+  }
+});
+
+// ==========================================
+// 📧 GỬI LẠI EMAIL XÁC NHẬN
+// ==========================================
+router.post('/resend-confirmation', async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email là bắt buộc!'
+      });
+    }
+
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email: email,
+      options: {
+        emailRedirectTo: `${process.env.FRONTEND_URL}/auth/callback`
+      }
+    });
+
+    if (error) {
+      return res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Email xác nhận đã được gửi lại!'
+    });
+
+  } catch (error: any) {
+    console.error('Resend confirmation error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi gửi email xác nhận!'
+    });
+  }
+});
+
+// ==========================================
+// 🔑 QUÊN MẬT KHẨU - GỬI EMAIL RESET
+// ==========================================
+router.post('/forgot-password', async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email là bắt buộc!'
+      });
+    }
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${process.env.FRONTEND_URL}/auth/reset-password`
+    });
+
+    if (error) {
+      return res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Email reset password đã được gửi!'
+    });
+
+  } catch (error: any) {
+    console.error('Forgot password error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi gửi email reset password!'
+    });
+  }
+});
+
+// ==========================================
+// 🔄 ĐỔI MẬT KHẨU
+// ==========================================
+router.post('/reset-password', async (req: Request, res: Response) => {
+  try {
+    const { token, newPassword } = req.body;
+
+    if (!token || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'Token và password mới là bắt buộc!'
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password phải có ít nhất 6 ký tự!'
+      });
+    }
+
+    // Verify token và update password
+    const { error } = await supabase.auth.updateUser({
+      password: newPassword
+    });
+
+    if (error) {
+      return res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Đổi mật khẩu thành công!'
+    });
+
+  } catch (error: any) {
+    console.error('Reset password error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi khi đổi mật khẩu!'
+    });
+  }
 });
 
 export default router;
