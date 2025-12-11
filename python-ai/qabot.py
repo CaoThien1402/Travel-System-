@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import ast
 from typing import List, Dict, Any, Optional
 
 import pandas as pd
@@ -10,20 +11,52 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_community.vectorstores import FAISS
 from langchain_huggingface import HuggingFaceEmbeddings
 from prepare_vector_db import _detect_device
+
 # =========================
 # CẤU HÌNH
 # =========================
 
-CSV_PATH = "data/district1.csv"
-VECTOR_DB_PATH = "vectorstores/db_faiss"
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+CSV_PATH = os.path.join(CURRENT_DIR, "..", "hotels.csv")
+VECTOR_DB_PATH = os.path.join(CURRENT_DIR, "vectorstores", "db_faiss")
 EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 GEMINI_MODEL_NAME = os.getenv("GEMINI_MODEL_NAME", "gemini-2.5-flash")
-
 
 # =========================
 # HỖ TRỢ CHUNG
 # =========================
 
+def _extract_star_from_row(star_val) -> Optional[int]:
+    """Helper lấy số sao từ dữ liệu raw"""
+    if pd.isna(star_val): return None
+    s = str(star_val).lower()
+    m = re.search(r"(\d+)", s)
+    return int(m.group(1)) if m else None
+
+def _extract_district_id(district_str) -> Optional[int]:
+    """
+    Cố gắng lấy số quận nếu có. 
+    VD: 'Quận 1, TP.HCM' -> 1
+    VD: 'Bình Tân' -> None
+    """
+    if pd.isna(district_str): return None
+    s = str(district_str).lower()
+    # Tìm chữ 'quận' hoặc 'district' theo sau là số
+    m = re.search(r"(quận|district)\s*0?(\d+)", s)
+    if m:
+        return int(m.group(2))
+    # Trường hợp đặc biệt: "1, Thành phố..."
+    m_start = re.match(r"^\s*(\d+)\s*,", s)
+    if m_start:
+        return int(m_start.group(1))
+    return None
+
+def _format_price(price) -> str:
+    try:
+        p = float(price)
+        return f"{p/1_000_000:.2f} tr"
+    except:
+        return "??"
 def _simplify_name(s: str) -> str:
     """Chuẩn hoá tên hotel / câu hỏi để so tên dễ hơn."""
     s = str(s).lower()
@@ -64,7 +97,7 @@ def _parse_constraints(query: str) -> Dict[str, Any]:
         districts.add(int(m.group(2)))
     if districts:
         constraints["districts"] = sorted(districts)
-
+    
     # Sao
     stars = []
     for m in re.finditer(r"(\d+)\s*sao", q):
@@ -172,6 +205,8 @@ def load_hotel_dataframe() -> pd.DataFrame:
         raise FileNotFoundError(f"Không tìm thấy CSV: {CSV_PATH}")
     df = pd.read_csv(CSV_PATH)
     # tạo thêm các cột chuẩn hóa để dễ tìm kiếm.
+    df["_star_num"] = df["star"].apply(_extract_star_from_row)
+    df["_district_num"] = df["district"].apply(_extract_district_id)
     df["hotelname_norm"] = df["hotelname"].astype(str).str.strip().str.lower() 
     df["hotelname_norm_simple"] = df["hotelname"].apply(_simplify_name)
     return df
@@ -185,14 +220,14 @@ def _row_to_hotel(row: pd.Series, match_reason: str = "") -> Dict[str, Any]:
     def safe_get(col):
         return row[col] if col in row else None
 
-    budget = safe_get("budget")
-    rating = safe_get("rating")
-    star = safe_get("star")
+    price = safe_get("price")
+    rating = safe_get("totalScore")
+    star = safe_get("_star_num")
 
     try:
-        budget = float(budget) if budget == budget else None
+        price = float(price) if price == price else None
     except Exception:
-        budget = None
+        price = None
     try:
         rating = float(rating) if rating == rating else None
     except Exception:
@@ -208,14 +243,13 @@ def _row_to_hotel(row: pd.Series, match_reason: str = "") -> Dict[str, Any]:
         "district": safe_get("district"),
         "rating": rating,
         "star": star,
-        "budget_vnd": budget,
-        "price_text": _format_price_vnd(budget),
-        "url": safe_get("URL") or "",
-        "image1": safe_get("image1") or "",
-        "image2": safe_get("image2") or "",
-        "facilities": safe_get("facilities") or "",
-        "service": safe_get("service") or "",
-        "review": safe_get("review") or "",
+        "budget_vnd": price,
+        "price_text": _format_price_vnd(price),
+        "url": safe_get("url_google") or "",
+        "image_url": safe_get("imageUrl") or "",
+        "amenities": safe_get("amenities") or "",
+        "description": safe_get("description1") or "",
+        "reviews": safe_get("reviews") or "",
         "match_reason": match_reason,
     }
     return hotel
@@ -333,18 +367,18 @@ def search_hotels(
                 break
 
     # 3) Nếu vẫn thiếu, lấy thêm từ CSV theo filter + rating – dùng to_numeric an toàn
-    district_col = pd.to_numeric(df_local["district"], errors="coerce")
-    budget_col = pd.to_numeric(df_local["budget"], errors="coerce")
-    rating_col = pd.to_numeric(df_local["rating"], errors="coerce")
-    star_col = pd.to_numeric(df_local["star"], errors="coerce")
+    district_col = pd.to_numeric(df_local["_district_num"], errors="coerce")
+    price_col = pd.to_numeric(df_local["price"], errors="coerce")
+    rating_col = pd.to_numeric(df_local["totalScore"], errors="coerce")
+    star_col = pd.to_numeric(df_local["_star_num"], errors="coerce")
 
     mask = pd.Series(True, index=df_local.index, dtype=bool)
     if constraints.get("districts"):
         mask &= district_col.round().astype("Int64").isin(constraints["districts"])
     if constraints.get("min_price") is not None:
-        mask &= budget_col >= constraints["min_price"]
+        mask &= price_col >= constraints["min_price"]
     if constraints.get("max_price") is not None:
-        mask &= budget_col <= constraints["max_price"]
+        mask &= price_col <= constraints["max_price"]
     if constraints.get("min_rating") is not None:
         mask &= rating_col >= constraints["min_rating"]
     if constraints.get("min_star") is not None:
@@ -353,10 +387,10 @@ def search_hotels(
     filtered_df = df_local[mask].copy()
     filtered_df["__rating"] = rating_col[mask]
     filtered_df["__star"] = star_col[mask]
-    filtered_df["__budget"] = budget_col[mask]
+    filtered_df["__price"] = price_col[mask]
 
     filtered_df = filtered_df.sort_values(
-        by=["__rating", "__star", "__budget"],
+        by=["__rating", "__star", "__price"],
         ascending=[False, False, True],
     )
 
@@ -372,9 +406,9 @@ def search_hotels(
     # 4) Sort theo yêu cầu
     sort_by = (filters or {}).get("sort_by") or "relevance"
     if sort_by == "Giá tăng dần":
-        hotels.sort(key=lambda h: (h["budget_vnd"] is None, h["budget_vnd"] or 0))
+        hotels.sort(key=lambda h: (h["price_vnd"] is None, h["price_vnd"] or 0))
     elif sort_by == "Giá giảm dần":
-        hotels.sort(key=lambda h: (h["budget_vnd"] is None, -(h["budget_vnd"] or 0)))
+        hotels.sort(key=lambda h: (h["price_vnd"] is None, -(h["price_vnd"] or 0)))
     elif sort_by == "Rating giảm dần":
         hotels.sort(
             key=lambda h: (

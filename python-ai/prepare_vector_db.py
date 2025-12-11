@@ -1,4 +1,6 @@
 import os
+import re
+import ast
 from typing import List, Optional
 
 import pandas as pd
@@ -8,11 +10,10 @@ from langchain_community.vectorstores import FAISS
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 
-
 MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
-CSV_PATH = "backend/src/data/district1.csv"
-VECTOR_DB_PATH = "vectorstores/db_faiss"
-
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+CSV_PATH = os.path.join(CURRENT_DIR, "..", "hotels.csv")
+VECTOR_DB_PATH = os.path.join(CURRENT_DIR, "vectorstores", "db_faiss")
 
 def _detect_device() -> str:
     """
@@ -43,48 +44,67 @@ def _to_int(value) -> Optional[int]:
     except Exception:
         return None
 
-
+def _extract_star(star_str) -> Optional[int]:
+    """Rút trích số sao từ chuỗi ví dụ 'Khách sạn 4 sao' -> 4"""
+    if pd.isna(star_str):
+        return None
+    star_str = str(star_str).lower()
+    # Tìm con số đứng trước chữ 'sao' hoặc 'star'
+    match = re.search(r"(\d+)\s*(sao|star)", star_str)
+    if match:
+        return int(match.group(1))
+    return None
 def _price_segment_text(price_vnd: Optional[float]) -> str:
-    """
-    Chuyển giá VND sang mô tả ngữ nghĩa (giá rẻ / tầm trung / cao cấp)
-    để embedding dễ match với câu hỏi như "giá rẻ", "tầm trung", ...
-    """
-    if price_vnd is None:
-        return ""
-
+    """Chuyển giá sang phân khúc text để AI hiểu"""
+    if price_vnd is None or pd.isna(price_vnd):
+        return "giá chưa cập nhật"
+    
     million = price_vnd / 1_000_000
-    if price_vnd < 1_000_000:
-        segment = "giá rẻ"
-    elif price_vnd < 3_000_000:
+    if price_vnd < 500_000:
+        segment = "giá rẻ, bình dân"
+    elif price_vnd < 1_500_000:
         segment = "tầm trung"
+    elif price_vnd < 4_000_000:
+        segment = "cao cấp, sang trọng"
     else:
-        segment = "cao cấp"
+        segment = "siêu sang, luxury"
 
-    return (
-        f"Giá tham khảo khoảng {million:.1f} triệu VND/đêm, thuộc phân khúc {segment}."
-    )
-
+    return f"Giá tham khảo khoảng {million:.1f} triệu VND/đêm, thuộc phân khúc {segment}."
+    
+def _clean_list_str(list_str) -> str:
+    """Làm sạch chuỗi dạng list ['A', 'B'] thành 'A, B'"""
+    if pd.isna(list_str): 
+        return ""
+    try:
+        # Thử parse string thành list
+        actual_list = ast.literal_eval(list_str)
+        if isinstance(actual_list, list):
+            # Lọc bỏ None/Nan và nối lại
+            return ", ".join([str(x) for x in actual_list if x])
+    except:
+        pass
+    return str(list_str).strip()
 # Biến đổi một dòng Excel khô khan thành một đoạn văn mô tả phong phú.
 def _build_hotel_document(row: pd.Series) -> Document:
     hotel_name = str(row.get("hotelname", "")).strip()
 
     address = str(row.get("address", "")).strip()
-    district = _to_int(row.get("district"))
-    rating = _to_float(row.get("rating"))
-    count_rating = _to_int(row.get("count_rating"))
-    star = _to_int(row.get("star"))
-    budget = _to_float(row.get("budget"))
-    time_info = str(row.get("time", "")).strip()
+    district_raw = str(row.get("district", ""))
+    district = district_raw.split(",")[0].strip() if district_raw else ""
+    rating = _to_float(row.get("totalScore"))
+    reviews_count = _to_int(row.get("reviewsCount"))
+    star_raw = row.get("star")
+    star = _extract_star(star_raw)
+    price = _to_float(row.get("budget"))
 
-    facilities = str(row.get("facilities", "")).strip()
-    service = str(row.get("service", "")).strip()
-    review = str(row.get("review", "")).strip()
+    amenities = _clean_list_str(row.get("amenities"))
+    reviews_list = _clean_list_str(row.get("reviews"))
+    description = str(row.get("description1", "")).replace("nan", "").strip()
 
     lat = _to_float(row.get("lat"))
-    lon = _to_float(row.get("lon"))
-    url = str(row.get("URL", "")).strip()
-    image1 = str(row.get("image1", "")).strip()
-    image2 = str(row.get("image2", "")).strip()
+    lon = _to_float(row.get("lng"))
+    url = str(row.get("url_google", "")).strip()
+    image_url = str(row.get("imageUrl", "")).strip()
 
     # --- Phần TEXT để embedding (page_content) ---
     basic_lines: List[str] = []
@@ -94,9 +114,9 @@ def _build_hotel_document(row: pd.Series) -> Document:
 
     # Hạng sao + rating
     if star is not None and rating is not None:
-        if count_rating is not None:
+        if reviews_count is not None:
             basic_lines.append(
-                f"Hạng {star} sao, điểm đánh giá trung bình {rating:.1f}/5 từ khoảng {count_rating} lượt đánh giá."
+                f"Hạng {star} sao, điểm đánh giá trung bình {rating:.1f}/5 từ khoảng {reviews_count} lượt đánh giá."
             )
         else:
             basic_lines.append(
@@ -118,23 +138,19 @@ def _build_hotel_document(row: pd.Series) -> Document:
             basic_lines.append(f"Địa chỉ: {address}.")
 
     # Khoảng giá + phân khúc
-    price_text = _price_segment_text(budget)
+    price_text = _price_segment_text(price)
     if price_text:
         basic_lines.append(price_text)
 
-    # Thời gian hoạt động / thông tin thêm
-    if time_info:
-        basic_lines.append(f"Thông tin thêm: {time_info}.")
-
     # Tiện ích & dịch vụ
-    if facilities:
-        basic_lines.append(f"Tiện ích nổi bật: {facilities}.")
-    if service:
-        basic_lines.append(f"Chất lượng dịch vụ: {service}.")
+    if amenities:
+        basic_lines.append(f"Tiện ích nổi bật: {amenities}.")
+    if reviews_list:
+        basic_lines.append(f"Review từ khách hàng: {reviews_list}")
 
     # Review ngắn (rất quan trọng cho recommendation theo trải nghiệm)
-    if review:
-        basic_lines.append(f"Nhận xét của khách: {review}")
+    if description and len(description) > 10:
+         basic_lines.append(f"Mô tả: {description}")
 
     # Ghép thành 1 đoạn mô tả giàu ngữ nghĩa
     full_description = "\n".join(basic_lines)
@@ -145,20 +161,21 @@ def _build_hotel_document(row: pd.Series) -> Document:
         "address": address,
         "district": district,
         "rating": rating,
-        "count_rating": count_rating,
+        "reviews_count": reviews_count,
         "star": star,
-        "budget": budget,
+        "price": price,
         "lat": lat,
         "lon": lon,
         "url": url,
-        "image1": image1,
-        "image2": image2,
+        "image_url": image_url,
     }
 
-    if facilities:
-        metadata["facilities"] = facilities
-    if service:
-        metadata["service"] = service
+    if amenities:
+        metadata["amenities"] = amenities
+    if reviews_list:
+        metadata["reviews_list"] = reviews_list
+    if description and len(description) > 10:
+        metadata["description"] = description
 
     return Document(page_content=full_description, metadata=metadata)
 

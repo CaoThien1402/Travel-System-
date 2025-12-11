@@ -78,7 +78,8 @@ let hotelsCache: Hotel[] | null = null;
  * Load hotels from district1.csv (Quận 1 data with different format)
  */
 const loadDistrict1Hotels = async (): Promise<Hotel[]> => {
-  const csvFilePath = path.join(__dirname, '../data/district1.csv');
+  const csvFilePath = path.join(__dirname, '..', 'hotels.csv');
+
   const hotels: Hotel[] = [];
   let id = 1000; // Start IDs from 1000 to avoid conflicts
 
@@ -183,7 +184,7 @@ export const loadHotelsFromCSV = async (): Promise<Hotel[]> => {
   // Step 2: Find CSV file location for hotels.csv
   // __dirname = current directory of this file
   // '..' means go up one level
-  const csvPath = path.join(__dirname, '..', 'data', 'hotels.csv');
+  const csvPath = path.join(__dirname, '..', 'hotels.csv');
   
   // Step 3: Load from hotels.csv (Quận 3)
   const loadHotels = new Promise<Hotel[]>((resolve, reject) => {

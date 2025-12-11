@@ -1,441 +1,244 @@
-# app.py
 import os
 import json
-from typing import Any, Dict, List, Tuple, Optional
-
-import requests
-import pandas as pd
 import streamlit as st
+from dotenv import load_dotenv
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from langchain_google_genai import ChatGoogleGenerativeAI
 
-from qabot import (
-    load_llm,
-    load_vector_retriever,
-    load_hotel_dataframe,
-    search_hotels_tool,
-    build_answer_chain,
-    _simplify_name,  # dùng lại hàm normalize tên của bạn
-)
+# --- CẤU HÌNH ---
+# Load biến môi trường
+load_dotenv()
+
+# --- IMPORT AN TOÀN TỪ QABOT ---
+try:
+    # Chỉ import những hàm quan trọng nhất định phải có
+    from qabot import (
+        load_vector_retriever,
+        load_hotel_dataframe,
+        search_hotels_tool, 
+        CSV_PATH,
+        GEMINI_MODEL_NAME # Lấy tên model từ qabot để đồng bộ
+    )
+except ImportError as e:
+    st.error(f"❌ LỖI LỚN: Không thể đọc file 'qabot.py'.\nChi tiết lỗi: {e}")
+    st.info("💡 Gợi ý: Kiểm tra xem file 'qabot.py' có nằm cùng thư mục với 'app.py' không?")
+    st.stop()
 
 # =======================
-# PAGE CONFIG
+# 1. CẤU HÌNH GIAO DIỆN
 # =======================
 st.set_page_config(
-    page_title="Smart Accommodation Chatbot",
+    page_title="Hotel Chatbot AI",
     page_icon="🏨",
     layout="wide",
+    initial_sidebar_state="expanded"
 )
 
+# CSS làm đẹp Card
+st.markdown("""
+<style>
+    div[data-testid="stContainer"] {
+        border: 1px solid #ddd;
+        border-radius: 12px;
+        padding: 15px;
+        background-color: #ffffff;
+    }
+    .hotel-title {
+        color: #0e1117;
+        font-weight: 700;
+        font-size: 1.1rem;
+        margin-bottom: 5px;
+    }
+    .price-highlight {
+        color: #2ecc71;
+        font-weight: bold;
+        font-size: 1rem;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # =======================
-# CACHE TÀI NGUYÊN
+# 2. KHỞI TẠO TÀI NGUYÊN
 # =======================
-@st.cache_resource(show_spinner=True)
-def init_resources() -> Tuple[Any, Any, Any, Any]:
-    """Khởi tạo LLM, retriever, DataFrame khách sạn và answer_chain."""
-    llm = load_llm()
-    retriever = load_vector_retriever()
-    df = load_hotel_dataframe()
-    answer_chain = build_answer_chain(llm)
-    return llm, retriever, df, answer_chain
-
-
-# =======================
-# IMAGE UTILITIES
-# =======================
-def _is_valid_image_url(url: str) -> bool:
-    if not url:
-        return False
-    url = str(url).strip()
-    if url.lower() in {"0", "none", "nan", "null"}:
-        return False
-    return url.startswith("http://") or url.startswith("https://")
-
-
-@st.cache_data(show_spinner=False)
-def _fetch_image_bytes(url: str) -> Optional[bytes]:
+@st.cache_resource(show_spinner="Đang khởi động hệ thống...")
+def init_resources():
+    # 1. Kiểm tra Key
+    api_key = os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        st.error("⚠️ LỖI: Chưa có GOOGLE_API_KEY trong file .env")
+        st.stop()
+        
     try:
-        resp = requests.get(url, timeout=6)
-        if resp.status_code == 200:
-            return resp.content
-    except Exception:
-        pass
-    return None
-
+        # 2. Tự khởi tạo LLM tại đây (Không phụ thuộc vào qabot nữa)
+        llm = ChatGoogleGenerativeAI(
+            model=GEMINI_MODEL_NAME, # Dùng tên model từ qabot
+            google_api_key=api_key,
+            temperature=0.7
+        )
+        
+        # 3. Load Dữ liệu từ qabot
+        retriever = load_vector_retriever()
+        df = load_hotel_dataframe()
+        
+        return llm, retriever, df
+    except Exception as e:
+        st.error(f"❌ Lỗi khởi tạo dữ liệu: {e}")
+        st.stop()
 
 # =======================
-# TÁCH KẾT QUẢ THEO CÂU TRẢ LỜI
+# 3. HÀM HIỂN THỊ CARD
 # =======================
-def _split_hotels_by_answer(
-    hotels: List[Dict[str, Any]],
-    answer_text: str,
-) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
-    """Tách danh sách hotel thành:
-    - main_hotels: tên xuất hiện trong answer_text
-    - extra_hotels: còn lại.
-    Nếu không bắt được hotel nào trong answer_text thì trả lại toàn bộ ở main_hotels.
-    """
+def render_hotel_cards(hotels: list):
     if not hotels:
-        return [], []
-
-    answer_simple = _simplify_name(answer_text or "")
-
-    main_hotels: List[Dict[str, Any]] = []
-    extra_hotels: List[Dict[str, Any]] = []
-
-    for h in hotels:
-        name = (h.get("hotelname") or "").strip()
-        if not name:
-            extra_hotels.append(h)
-            continue
-        name_simple = _simplify_name(name)
-        if name_simple and name_simple in answer_simple:
-            main_hotels.append(h)
-        else:
-            extra_hotels.append(h)
-
-    # Nếu LLM không nhắc tới hotel nào thì cứ hiển thị hết như cũ
-    if not main_hotels:
-        return hotels, []
-
-    return main_hotels, extra_hotels
-
-
-# =======================
-# RENDER HOTEL CARDS (KHÔNG HTML THÔ)
-# =======================
-def render_hotel_cards(hotels: List[Dict[str, Any]]):
-    """Hiển thị danh sách khách sạn bằng component Streamlit thuần."""
-    if not hotels:
-        st.info("Không tìm thấy khách sạn phù hợp để hiển thị.")
+        st.warning("Không tìm thấy khách sạn nào phù hợp với bộ lọc này.")
         return
 
-    cols_per_row = 3
-    for i in range(0, len(hotels), cols_per_row):
-        row_hotels = hotels[i : i + cols_per_row]
-        cols = st.columns(len(row_hotels))
-
-        for col, hotel in zip(cols, row_hotels):
-            with col:
-                name = hotel.get("hotelname") or "Khách sạn không tên"
-                district = hotel.get("district") or "N/A"
-                price_text = hotel.get("price_text") or "Giá chưa rõ"
-                rating = hotel.get("rating")
-                star = hotel.get("star")
-                address = hotel.get("address") or ""
-                url = hotel.get("url") or ""
-                image1 = hotel.get("image1") or ""
-                reason = hotel.get("match_reason") or ""
-                facilities = hotel.get("facilities") or ""
-                services = hotel.get("service") or ""
-
-                # ẢNH
-                if _is_valid_image_url(image1):
-                    img_bytes = _fetch_image_bytes(image1)
-                    if img_bytes:
-                        st.image(img_bytes, caption=name, use_container_width=True)
-
-                # THÔNG TIN CƠ BẢN
-                st.markdown(f"**{name}**")
-                st.caption(f"Quận {district}")
-                if address:
-                    st.markdown(f"📍 {address}")
-                st.markdown(f"💰 {price_text}")
-
-                # SAO + RATING
-                star_text = ""
-                try:
-                    if star not in (None, "", float("nan")):
-                        star_int = int(float(star))
-                        if star_int > 0:
-                            star_text = "⭐" * star_int
-                except Exception:
-                    pass
-
-                rating_text = ""
-                try:
-                    if rating not in (None, "", float("nan")):
-                        rating_val = float(rating)
-                        rating_text = f" | Rating {rating_val:.1f}/5"
-                except Exception:
-                    pass
-
-                if star_text or rating_text:
-                    st.markdown(f"{star_text}{rating_text}")
-
-                # LÝ DO MATCH
-                if reason:
-                    st.markdown(f"`{reason}`")
-
-                # TIỆN ÍCH / DỊCH VỤ (rút gọn)
-                if facilities:
-                    fac_str = str(facilities)
-                    short = fac_str[:140] + ("..." if len(fac_str) > 140 else "")
-                    st.markdown(f"**Tiện ích:** {short}")
-
-                if services:
-                    srv_str = str(services)
-                    short = srv_str[:140] + ("..." if len(srv_str) > 140 else "")
-                    st.markdown(f"**Dịch vụ nổi bật:** {short}")
-
-                # LINK
-                if url:
-                    st.markdown(f"[🔗 Xem chi tiết]({url})")
-
-
-# =======================
-# SESSION STATE
-# =======================
-if "messages" not in st.session_state:
-    st.session_state.messages = []  # [{"role", "content"}]
-
-
-# =======================
-# LOAD LLM & DATA
-# =======================
-with st.spinner("Đang khởi tạo mô hình & dữ liệu..."):
-    llm, retriever, df_hotels, answer_chain = init_resources()
-
-# Chuẩn hoá cột budget để lấy khoảng giá an toàn
-budget_series = pd.to_numeric(df_hotels["budget"], errors="coerce")
-max_budget_vnd = float(
-    budget_series.max() if budget_series.max() == budget_series.max() else 0.0
-)
-max_budget_million = max(3, int(max_budget_vnd / 1_000_000) + 1)
-
-# Chuẩn hoá cột district để build danh sách quận
-district_series = pd.to_numeric(df_hotels["district"], errors="coerce")
-district_vals = district_series.dropna().round().astype(int).unique().tolist()
-district_vals = sorted(district_vals)
-
-
-# =======================
-# SIDEBAR (FILTER)
-# =======================
-with st.sidebar:
-    st.markdown("### ⚙️ Cấu hình tìm kiếm")
-
-    st.markdown(
-        """
-        Ứng dụng tư vấn chỗ ở thông minh dùng **RAG + Tool + Gemini**.
-
-        - Dữ liệu: `district1.csv`  
-        - Vector DB: FAISS + MiniLM  
-        - LLM: Gemini (langchain-google-genai)
-        """
-    )
-
-    api_key_input = st.text_input(
-        "Google API Key (tuỳ chọn)",
-        type="password",
-        help="Nếu để trống, hệ thống dùng GOOGLE_API_KEY từ môi trường.",
-    )
-    if api_key_input:
-        os.environ["GOOGLE_API_KEY"] = api_key_input
-
-    st.markdown("---")
-
-    selected_districts = st.multiselect(
-        "Chọn quận mong muốn",
-        options=district_vals,
-        format_func=lambda d: f"Quận {d}",
-    )
-
-    # Price range (triệu VND)
-    price_min_m, price_max_m = st.slider(
-        "Khoảng giá (triệu VND / đêm)",
-        min_value=0.0,
-        max_value=float(max_budget_million),
-        value=(0.0, float(max_budget_million)),
-        step=0.5,
-    )
-
-    # Rating & star
-    min_rating = st.slider(
-        "Điểm đánh giá tối thiểu",
-        min_value=0.0,
-        max_value=5.0,
-        value=0.0,
-        step=0.1,
-    )
-
-    min_star = st.slider(
-        "Số sao tối thiểu",
-        min_value=0,
-        max_value=5,
-        value=0,
-        step=1,
-    )
-
-    sort_by = st.selectbox(
-        "Sắp xếp kết quả",
-        ["Phù hợp nhất", "Giá tăng dần", "Giá giảm dần", "Rating giảm dần"],
-    )
-
-    top_k = st.slider(
-        "Số khách sạn hiển thị (tối đa)",
-        min_value=1,
-        max_value=10,
-        value=3,
-        step=1,
-        help="Logic search_hotels sẽ ưu tiên: tên khách sạn trùng câu hỏi → kết quả RAG → lọc CSV.",
-    )
-
-    st.markdown("---")
-    st.markdown(
-        """
-        💡 **Gợi ý câu hỏi**  
-        - *Khách sạn giá rẻ ở quận 1, rating trên 4.0*  
-        - *Silverland Sakyo giá bao nhiêu 1 đêm?*  
-        - *Cho mình vài khách sạn 3–4 sao gần trung tâm*  
-        """
-    )
-
-
-# =======================
-# HEADER
-# =======================
-st.markdown(
-    """
-    <style>
-    .main-title {
-        font-size: 32px;
-        font-weight: 700;
-        margin-bottom: 0;
-    }
-    .sub-title {
-        font-size: 14px;
-        color: #6b7280;
-        margin-top: 4px;
-        margin-bottom: 18px;
-    }
-    .filter-chip {
-        display:inline-block;
-        padding:2px 8px;
-        margin-right:4px;
-        margin-bottom:4px;
-        border-radius:999px;
-        background:#e5e7eb;
-        font-size:11px;
-        color:#374151;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-st.markdown('<p class="main-title">🏨 Smart Accommodation Chatbot</p>', unsafe_allow_html=True)
-st.markdown(
-    '<p class="sub-title">Hỏi bất kỳ điều gì về khách sạn / chỗ ở tại TP.HCM, tôi sẽ gợi ý dựa trên dữ liệu thực tế.</p>',
-    unsafe_allow_html=True,
-)
-
-# Hiển thị tóm tắt filter dưới title
-active_filters_html = ""
-
-if selected_districts:
-    districts_str = ", ".join([f"Q{d}" for d in selected_districts])
-    active_filters_html += f'<span class="filter-chip">Khu vực: {districts_str}</span>'
-
-if price_min_m > 0 or price_max_m < max_budget_million:
-    active_filters_html += (
-        f'<span class="filter-chip">Giá: {price_min_m:.1f}–{price_max_m:.1f}M</span>'
-    )
-
-if min_rating > 0:
-    active_filters_html += f'<span class="filter-chip">Rating ≥ {min_rating:.1f}</span>'
-
-if min_star > 0:
-    active_filters_html += f'<span class="filter-chip">Sao ≥ {min_star}</span>'
-
-if sort_by and sort_by != "Phù hợp nhất":
-    active_filters_html += f'<span class="filter-chip">Sắp xếp: {sort_by}</span>'
-
-if active_filters_html:
-    st.markdown(active_filters_html, unsafe_allow_html=True)
-    st.markdown("")  # spacing
-
-
-# =======================
-# LỊCH SỬ CHAT
-# =======================
-chat_container = st.container()
-with chat_container:
-    for msg in st.session_state.messages:
-        with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
-
-
-# =======================
-# CHAT INPUT
-# =======================
-user_input = st.chat_input("Nhập câu hỏi về khách sạn của bạn...")
-
-if user_input:
-    user_input = user_input.strip()
-    if user_input:
-        # hiển thị câu hỏi của user
-        st.session_state.messages.append({"role": "user", "content": user_input})
-        with st.chat_message("user"):
-            st.markdown(user_input)
-
-        # build filter dict để truyền xuống tool
-        filters: Dict[str, Any] = {
-            "districts": selected_districts or None,
-            "min_price": int(price_min_m * 1_000_000) if price_min_m > 0 else None,
-            "max_price": int(price_max_m * 1_000_000)
-            if price_max_m < max_budget_million
-            else None,
-            "min_rating": min_rating if min_rating > 0 else None,
-            "min_star": min_star if min_star > 0 else None,
-            "sort_by": sort_by,
-        }
-
-        # assistant message
-        with st.chat_message("assistant"):
-            with st.spinner("Đang suy nghĩ..."):
-                try:
-                    tool_result = search_hotels_tool(
-                        user_query=user_input,
-                        retriever=retriever,
-                        df=df_hotels,
-                        top_k=top_k,
-                        filters=filters,
-                    )
-
-                    answer_text = answer_chain.invoke(
-                        {
-                            "user_input": user_input,
-                            "tool_result_json": json.dumps(
-                                tool_result, ensure_ascii=False, indent=2
-                            ),
-                        }
-                    )
-                except Exception as e:
-                    answer_text = f"Xin lỗi, đã có lỗi xảy ra: {e}"
-                    tool_result = {"results": []}
-
-                st.markdown(answer_text)
-                st.session_state.messages.append(
-                    {"role": "assistant", "content": answer_text}
-                )
-
-                hotels = tool_result.get("results", [])
-                if hotels:
-                    main_hotels, extra_hotels = _split_hotels_by_answer(
-                        hotels, answer_text
-                    )
-
-                    st.markdown("**✨ Gợi ý chỗ ở phù hợp từ dữ liệu:**")
-                    render_hotel_cards(main_hotels)
-
-                    if extra_hotels:
-                        with st.expander(
-                            "Xem thêm một vài gợi ý khác từ dữ liệu (không được nhắc trong câu trả lời)",
-                            expanded=False,
-                        ):
-                            render_hotel_cards(extra_hotels)
+    st.success(f"🔍 Tìm thấy {len(hotels)} địa điểm:")
+    
+    cols = st.columns(3)
+    for idx, hotel in enumerate(hotels):
+        with cols[idx % 3]:
+            with st.container():
+                # --- ẢNH ---
+                # Thử lấy các tên key phổ biến để tránh lỗi
+                img = hotel.get("image_url") or hotel.get("image") or hotel.get("imageUrl")
+                
+                if img and str(img).startswith("http"):
+                    st.image(img, use_container_width=True, height=200)
                 else:
-                    st.info(
-                        "Hiện chưa tìm được khách sạn phù hợp với câu hỏi / bộ lọc. "
-                        "Bạn có thể mô tả cụ thể hơn (khu vực, ngân sách, số sao, nhu cầu...)."
-                    )
+                    st.image("https://via.placeholder.com/300x200?text=No+Image", use_container_width=True)
+
+                # --- TÊN ---
+                name = hotel.get("hotelname") or "Khách sạn chưa đặt tên"
+                star = hotel.get("star")
+                star_str = f" {'⭐' * int(star)}" if (star and str(star).isdigit() and int(star)>0) else ""
+                
+                st.markdown(f"<div class='hotel-title'>{name}{star_str}</div>", unsafe_allow_html=True)
+
+                # --- GIÁ & RATING ---
+                rating = hotel.get("rating")
+                price = hotel.get("price_text") or f"{hotel.get('price', 0):,} VND"
+                
+                c1, c2 = st.columns([1, 1.5])
+                with c1:
+                    if rating: st.markdown(f"🌟 **{rating}**")
+                with c2:
+                    st.markdown(f"<span class='price-highlight'>{price}</span>", unsafe_allow_html=True)
+                
+                # --- ĐỊA CHỈ ---
+                addr = str(hotel.get("address", ""))
+                st.caption(f"📍 {addr[:50]}...")
+                
+                # --- EXPANDER ---
+                with st.expander("Xem chi tiết"):
+                    if hotel.get("match_reason"):
+                        st.info(f"💡 {hotel['match_reason']}")
+                    if hotel.get("amenities"):
+                        st.markdown(f"**Tiện nghi:** {hotel['amenities']}")
+                    if hotel.get("description"):
+                        st.text(hotel['description'][:200])
+
+# =======================
+# 4. LOGIC CHÍNH
+# =======================
+
+# Session State
+if "messages" not in st.session_state:
+    st.session_state.messages = [{"role": "assistant", "content": "Chào bạn! Bạn cần tìm khách sạn khu vực nào và tầm giá bao nhiêu?"}]
+
+# Load resources
+llm, retriever, df_hotels = init_resources()
+
+# --- SIDEBAR ---
+with st.sidebar:
+    st.header("🔍 Bộ Lọc")
+    
+    # Lọc Quận (District)
+    # Kiểm tra xem có cột district không
+    if "district" in df_hotels.columns:
+        # Lấy list quận, xử lý string
+        raw_list = df_hotels["district"].dropna().astype(str).unique()
+        clean_list = sorted(list(set([d.split(",")[0].strip() for d in raw_list])))
+        selected_districts = st.multiselect("Khu vực", clean_list)
+    else:
+        selected_districts = []
+
+    # Lọc Giá
+    col_price = "price" if "price" in df_hotels.columns else "budget"
+    max_p = 5000000
+    try: 
+        if col_price in df_hotels.columns: max_p = int(df_hotels[col_price].max())
+    except: pass
+    
+    price_range = st.slider("Giá tối đa (VND)", 0, max_p, (0, max_p), step=100000)
+
+    # Lọc Sao/Rating
+    col1, col2 = st.columns(2)
+    with col1: min_star = st.selectbox("Sao", [0, 1, 2, 3, 4, 5])
+    with col2: min_rating = st.number_input("Điểm >", 0.0, 5.0, 0.0)
+    
+    if st.button("Làm mới chat", type="primary"):
+        st.session_state.messages = []
+        st.rerun()
+
+# --- CHAT ---
+st.title("🤖 Trợ lý Đặt phòng Khách sạn")
+
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
+
+if query := st.chat_input("Nhập câu hỏi..."):
+    # 1. User
+    st.session_state.messages.append({"role": "user", "content": query})
+    with st.chat_message("user"):
+        st.markdown(query)
+
+    # 2. Assistant
+    with st.chat_message("assistant"):
+        with st.spinner("Đang tìm kiếm..."):
+            try:
+                # --- GHÉP QUẬN VÀO CÂU QUERY ---
+                # Đây là mẹo quan trọng để RAG hiểu được tên quận dạng chữ (Bình Tân...)
+                final_query = query
+                if selected_districts:
+                    final_query += f". Tìm tại khu vực: {', '.join(selected_districts)}"
+                
+                # Filters
+                filters = {
+                    "min_price": price_range[0],
+                    "max_price": price_range[1],
+                    "min_star": min_star,
+                    "min_rating": min_rating
+                }
+
+                # Gọi Tool
+                result = search_hotels_tool(
+                    user_query=final_query,
+                    retriever=retriever,
+                    df=df_hotels,
+                    top_k=6,
+                    filters=filters
+                )
+                
+                hotels = result.get("results", [])
+
+                # LLM trả lời
+                prompt = ChatPromptTemplate.from_template("""
+                Dựa vào danh sách khách sạn: {data}
+                Trả lời câu hỏi: "{query}"
+                Ngắn gọn, thân thiện. Nếu không có khách sạn, hãy xin lỗi và gợi ý mở rộng tìm kiếm.
+                """)
+                chain = prompt | llm | StrOutputParser()
+                ans = chain.invoke({"query": query, "data": json.dumps(hotels, ensure_ascii=False)})
+                
+                st.markdown(ans)
+                if hotels:
+                    st.divider()
+                    render_hotel_cards(hotels)
+                
+                st.session_state.messages.append({"role": "assistant", "content": ans})
+                
+            except Exception as e:
+                st.error(f"Lỗi xử lý: {e}")

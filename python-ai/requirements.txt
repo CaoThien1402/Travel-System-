@@ -29,3 +29,6 @@ faiss-cpu
 
 # --- Tiện ích hệ thống ---
 python-dotenv
+rank_bm25
+fastapi 
+unicorn
