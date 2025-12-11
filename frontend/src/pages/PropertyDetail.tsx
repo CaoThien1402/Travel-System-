@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   ExternalLink,
   Globe,
+  Hotel as HotelIcon,
   MapPin,
   Phone,
   ShieldCheck,
@@ -204,14 +205,33 @@ export default function PropertyDetail() {
           <Card className="overflow-hidden">
             <div className="relative h-[360px] bg-muted">
               {imageUrl ? (
-                <img
-                  src={imageUrl}
-                  alt={hotelname}
-                  className="h-full w-full object-cover"
-                />
+                <>
+                  <img
+                    src={imageUrl}
+                    alt={hotelname}
+                    className="h-full w-full object-cover"
+                    onError={(e) => {
+                      // Hide broken image and show fallback
+                      e.currentTarget.classList.add('hidden');
+                      const fallback = e.currentTarget.nextElementSibling;
+                      if (fallback) fallback.classList.remove('hidden');
+                    }}
+                  />
+                  <div className="hidden h-full w-full">
+                    <div className="flex h-full w-full items-center justify-center text-muted-foreground">
+                      <div className="text-center">
+                        <HotelIcon className="w-16 h-16 mx-auto mb-2 opacity-50" />
+                        <p>Không thể tải hình ảnh</p>
+                      </div>
+                    </div>
+                  </div>
+                </>
               ) : (
                 <div className="flex h-full w-full items-center justify-center text-muted-foreground">
-                  Không có hình ảnh
+                  <div className="text-center">
+                    <HotelIcon className="w-16 h-16 mx-auto mb-2 opacity-50" />
+                    <p>Không có hình ảnh</p>
+                  </div>
                 </div>
               )}
               <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />

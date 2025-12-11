@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { MapPin, Star, DollarSign, Filter, Search, Hotel, User } from 'lucide-react';
+import { MapPin, Star, DollarSign, Filter, Search, Hotel as HotelIcon, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -21,14 +21,69 @@ interface Hotel {
   totalScore?: number;
 }
 
+// Component để hiển thị ảnh với fallback
+const HotelImage = ({ src, alt }: { src?: string; alt: string }) => {
+  const [hasError, setHasError] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Reset state when src changes
+  useEffect(() => {
+    setHasError(false);
+    setIsLoading(true);
+  }, [src]);
+
+  if (!src || hasError) {
+    return (
+      <div className="w-full h-full flex items-center justify-center text-gray-400 bg-gray-100">
+        <HotelIcon className="w-8 h-8" />
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {isLoading && (
+        <div className="w-full h-full flex items-center justify-center text-gray-400 bg-gray-100 absolute inset-0">
+          <div className="animate-pulse w-8 h-8 rounded-full bg-gray-300"></div>
+        </div>
+      )}
+      <img
+        src={src}
+        alt={alt}
+        className={`w-full h-full object-cover ${isLoading ? 'opacity-0' : 'opacity-100'}`}
+        onLoad={() => setIsLoading(false)}
+        onError={() => {
+          setHasError(true);
+          setIsLoading(false);
+        }}
+      />
+    </>
+  );
+};
+
 const HotelSearch = () => {
   const [hotels, setHotels] = useState<Hotel[]>([]);
   const [filteredHotels, setFilteredHotels] = useState<Hotel[]>([]);
+  const [mapHotels, setMapHotels] = useState<Hotel[]>([]);
   const [selectedHotel, setSelectedHotel] = useState<Hotel | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [priceRange, setPriceRange] = useState([0, 10000000]);
   const [minStars, setMinStars] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Helper function: Get featured hotels for map display
+  const getFeaturedHotelsForMap = (hotelsList: Hotel[], maxCount: number = 100): Hotel[] => {
+    // Prioritize hotels with: reviews, good ratings, reasonable price, valid coordinates
+    return hotelsList
+      .filter(h => h.lat !== 0 && h.lon !== 0) // Only hotels with valid coordinates
+      .sort((a, b) => {
+        // Score calculation: reviews count + rating + price factor
+        const scoreA = (a.reviewsCount || 0) * 2 + (a.totalScore || 0) * 10 + (a.star || 0) * 5;
+        const scoreB = (b.reviewsCount || 0) * 2 + (b.totalScore || 0) * 10 + (b.star || 0) * 5;
+        return scoreB - scoreA;
+      })
+      .slice(0, maxCount); // Limit to top N hotels
+  };
 
   // Fetch hotels from API
   useEffect(() => {
@@ -36,10 +91,15 @@ const HotelSearch = () => {
       try {
         const response = await fetch('http://localhost:5000/api/properties');
         const data = await response.json();
-        setHotels(data);
-        setFilteredHotels(data);
+        // Ensure data is always an array
+        const hotelsArray = Array.isArray(data) ? data : [];
+        setHotels(hotelsArray);
+        setFilteredHotels(hotelsArray);
       } catch (error) {
         console.error('Error fetching hotels:', error);
+        // Set empty arrays on error to prevent .map errors
+        setHotels([]);
+        setFilteredHotels([]);
       } finally {
         setIsLoading(false);
       }
@@ -72,6 +132,9 @@ const HotelSearch = () => {
     }
 
     setFilteredHotels(filtered);
+    
+    // Update map hotels with featured selection (limit to 100 best hotels)
+    setMapHotels(getFeaturedHotelsForMap(filtered, 100));
   }, [searchQuery, priceRange, minStars, hotels]);
 
   return (
@@ -82,7 +145,7 @@ const HotelSearch = () => {
           <div className="flex items-center justify-between">
             <Link to="/" className="flex items-center gap-2">
               <div className="w-10 h-10 rounded-lg bg-gradient-to-r from-primary to-primary-hover flex items-center justify-center">
-                <Hotel className="w-6 h-6 text-white" />
+                <HotelIcon className="w-6 h-6 text-white" />
               </div>
               <span className="text-xl font-bold text-foreground">3T2M1Stay</span>
             </Link>
@@ -198,18 +261,8 @@ const HotelSearch = () => {
                   >
                     <div className="flex gap-4">
                       {/* Hotel Image */}
-                      <div className="w-32 h-32 flex-shrink-0 rounded-lg overflow-hidden bg-gray-200">
-                        {hotel.imageUrl ? (
-                          <img
-                            src={hotel.imageUrl}
-                            alt={hotel.hotelname}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-gray-400">
-                            <MapPin className="w-8 h-8" />
-                          </div>
-                        )}
+                      <div className="w-32 h-32 flex-shrink-0 rounded-lg overflow-hidden bg-gray-200 relative">
+                        <HotelImage src={hotel.imageUrl} alt={hotel.hotelname} />
                       </div>
 
                       {/* Hotel Info */}
@@ -254,8 +307,20 @@ const HotelSearch = () => {
         {/* Map (Right Side - 50%) */}
         <div className="w-1/2 relative p-4">
           <div className="h-full rounded-xl overflow-hidden shadow-lg">
+            {mapHotels.length < filteredHotels.length && (
+              <div className="absolute top-6 left-6 right-6 z-10 bg-white/95 backdrop-blur-sm rounded-lg shadow-md p-3 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-700">
+                    Hiển thị <strong>{mapHotels.length}</strong> khách sạn tiêu biểu trên {filteredHotels.length} khách sạn
+                  </span>
+                  <span className="text-xs text-gray-500">
+                    (Đánh giá cao nhất)
+                  </span>
+                </div>
+              </div>
+            )}
             <HotelMap
-              hotels={filteredHotels}
+              hotels={mapHotels}
               onMarkerClick={setSelectedHotel}
             />
           </div>

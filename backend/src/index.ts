@@ -5,9 +5,11 @@ import dotenv from 'dotenv';
 // Import router chat
 import chatRoutes from './routes/chat';
 
-// Tạm thời comment các routes chưa dùng để tránh lỗi import
+// Import properties routes
+import propertiesRoutes from './routes/properties';
+
+// Tạm thời comment auth routes chưa dùng
 // import authRoutes from './routes/auth';
-// import propertiesRoutes from './routes/properties';
 
 dotenv.config();
 
@@ -29,7 +31,7 @@ app.use('/api', chatRoutes);
 
 // Các routes khác (mở lại khi bạn fix xong các file đó)
 // app.use('/api/auth', authRoutes);
-// app.use('/api/properties', propertiesRoutes);
+app.use('/api/properties', propertiesRoutes);
 
 // --- Error Handling ---
 app.use((req, res) => {

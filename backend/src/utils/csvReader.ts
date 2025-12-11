@@ -74,54 +74,7 @@ export interface Hotel {
  */
 let hotelsCache: Hotel[] | null = null;
 
-/**
- * Load hotels from district1.csv (Quận 1 data with different format)
- */
-const loadDistrict1Hotels = async (): Promise<Hotel[]> => {
-  const csvFilePath = path.join(__dirname, '..', 'hotels.csv');
-
-  const hotels: Hotel[] = [];
-  let id = 1000; // Start IDs from 1000 to avoid conflicts
-
-  return new Promise((resolve, reject) => {
-    fs.createReadStream(csvFilePath)
-      .pipe(csvParser())
-      .on('data', (row: any) => {
-        try {
-          hotels.push({
-            id: id++,
-            hotelname: row.hotelname || '',
-            address: row.address || '',
-            street: '',
-            district: `Quận ${row.district}, Thành phố Hồ Chí Minh` || row.district,
-            city: 'Thành phố Hồ Chí Minh',
-            lat: parseFloat(row.lat) || 0,
-            lon: parseFloat(row.lon) || 0,
-            searchString: row.hotelname?.toLowerCase() || '',
-            categoryName: 'Khách sạn',
-            categories: ['Khách sạn'],
-            description1: row.review || '',
-            description2: row.facilities || '',
-            url_google: row.URL || '',
-            website: '',
-            phone: '',
-            price: parseFloat(row.budget) || 0,
-            imageUrl: row.image1 || '',
-            star: parseInt(row.star) || 0,
-            rank: 0,
-            totalScore: parseFloat(row.rating) || 0,
-            reviewsCount: parseInt(row.count_rating) || 0,
-            amenities: row.facilities ? [row.facilities] : [],
-            reviews: row.review ? [row.review] : [],
-          });
-        } catch (error) {
-          console.error('Error parsing district1 row:', error);
-        }
-      })
-      .on('end', () => resolve(hotels))
-      .on('error', reject);
-  });
-};
+// Đã xóa hàm loadDistrict1Hotels vì chỉ còn sử dụng 1 file hotels.csv
 
 // ========================================
 // HELPER FUNCTION: PARSE ARRAY STRINGS
@@ -156,6 +109,39 @@ export const parseArrayString = (value: string): string[] => {
 };
 
 // ========================================
+// HELPER FUNCTION: PARSE STAR RATING
+// ========================================
+/**
+ * Extracts star rating from text like "Khách sạn 2 sao" → 2
+ * If no number found, returns 0
+ */
+const parseStarRating = (value: string): number => {
+  if (!value) return 0;
+  
+  // Try to parse as number first
+  const num = parseFloat(value);
+  if (!isNaN(num)) return num;
+  
+  // Extract number from text like "Khách sạn 2 sao"
+  const match = value.match(/(\d+)\s*sao/i);
+  if (match) return parseInt(match[1], 10);
+  
+  return 0;
+};
+
+// ========================================
+// HELPER FUNCTION: PARSE PRICE
+// ========================================
+/**
+ * Parses price value, handles empty and invalid values
+ */
+const parsePrice = (value: string): number => {
+  if (!value || value === '' || value === 'None' || value === 'nan') return 0;
+  const num = parseFloat(value);
+  return isNaN(num) ? 0 : num;
+};
+
+// ========================================
 // MAIN FUNCTION: LOAD HOTELS FROM CSV
 // ========================================
 /**
@@ -182,9 +168,9 @@ export const loadHotelsFromCSV = async (): Promise<Hotel[]> => {
   }
 
   // Step 2: Find CSV file location for hotels.csv
-  // __dirname = current directory of this file
-  // '..' means go up one level
-  const csvPath = path.join(__dirname, '..', 'hotels.csv');
+  // __dirname = current directory of this file (utils/)
+  // '..' means go up one level to src/, then 'data' folder
+  const csvPath = path.join(__dirname, '..', 'data', 'hotels.csv');
   
   // Step 3: Load from hotels.csv (Quận 3)
   const loadHotels = new Promise<Hotel[]>((resolve, reject) => {
@@ -213,7 +199,7 @@ export const loadHotelsFromCSV = async (): Promise<Hotel[]> => {
             district: row.district || '',
             city: row.city || '',
             lat: parseFloat(row.lat) || 0,                    // Convert string to number
-            lon: parseFloat(row.lon) || 0,
+            lon: parseFloat(row.lng || row.lon) || 0,         // CSV uses 'lng', fallback to 'lon'
             searchString: row.searchString || '',
             categoryName: row.categoryName || '',
             categories: parseArrayString(row.categories),      // Parse array from string
@@ -222,9 +208,9 @@ export const loadHotelsFromCSV = async (): Promise<Hotel[]> => {
             url_google: row.url_google || '',
             website: row.website || '',
             phone: row.phone || '',
-            price: parseFloat(row.price) || 0,
+            price: parsePrice(row.price),                      // Use helper function
             imageUrl: row.imageUrl || '',
-            star: parseFloat(row.star) || 0,
+            star: parseStarRating(row.star),                   // Parse star from text like "Khách sạn 2 sao"
             rank: parseFloat(row.rank) || 0,
             totalScore: parseFloat(row.totalScore) || 0,
             oneStar: parseFloat(row.oneStar) || 0,
@@ -253,19 +239,15 @@ export const loadHotelsFromCSV = async (): Promise<Hotel[]> => {
       });
   });
 
-  // Step 4: Load both datasets and merge
+  // Step 4: Load hotels and cache
   try {
-    const [hotels, district1Hotels] = await Promise.all([
-      loadHotels,
-      loadDistrict1Hotels()
-    ]);
+    const hotels = await loadHotels;
     
-    const allHotels = [...hotels, ...district1Hotels];
-    console.log(`Total hotels loaded: ${allHotels.length} (Quận 3: ${hotels.length}, Quận 1: ${district1Hotels.length})`);
+    console.log(`Total hotels loaded: ${hotels.length} from data/hotels.csv`);
     
     // Step 5: Cache and return
-    hotelsCache = allHotels;
-    return allHotels;
+    hotelsCache = hotels;
+    return hotels;
   } catch (error) {
     console.error('Error loading hotels:', error);
     throw error;
