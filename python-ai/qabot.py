@@ -22,7 +22,7 @@ VECTOR_DB_PATH = os.path.join(CURRENT_DIR, "vectorstores", "db_faiss")
 EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 GEMINI_MODEL_NAME = os.getenv("GEMINI_MODEL_NAME", "gemini-2.5-flash")
 
-os.environ["GOOGLE_API_KEY"] = "AIzaSyCbbjUAiOV_k63riaw06248Scho-IOAFw8"
+os.environ["GOOGLE_API_KEY"] = "YOUR KEY HERE"
 
 # =========================
 # HỖ TRỢ CHUNG
