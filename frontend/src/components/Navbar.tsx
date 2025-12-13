@@ -1,21 +1,42 @@
-import { Hotel, Menu, User } from "lucide-react";
+import { Hotel, Menu, User, LogOut, LayoutDashboard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    try {
+      await signOut();
+      navigate('/');
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
+  };
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-sm border-b border-border shadow-soft">
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16">
-          <div className="flex items-center gap-2">
+          {/* Logo */}
+          <Link to="/" className="flex items-center gap-2">
             <div className="w-10 h-10 rounded-lg bg-gradient-hero flex items-center justify-center">
               <Hotel className="w-6 h-6 text-primary-foreground" />
             </div>
             <span className="text-xl font-bold text-foreground">3T2M1Stay</span>
-          </div>
+          </Link>
 
           {/* Desktop Menu */}
           <div className="hidden md:flex items-center gap-6">
@@ -27,18 +48,57 @@ const Navbar = () => {
             </Link>
           </div>
 
+          {/* Desktop Auth */}
           <div className="hidden md:flex items-center gap-3">
-            <Link to="/login">
-              <Button variant="ghost" size="sm">
-                <User className="w-4 h-4 mr-2" />
-                Đăng nhập
-              </Button>
-            </Link>
-            <Link to="/register">
-              <Button size="sm" className="bg-primary hover:bg-primary-hover transition-colors">
-                Đăng ký
-              </Button>
-            </Link>
+            {user ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center">
+                      <User className="w-4 h-4 text-white" />
+                    </div>
+                    <span className="max-w-[150px] truncate">
+                      {user.email}
+                    </span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel>Tài khoản của tôi</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => navigate('/dashboard')}>
+                    <LayoutDashboard className="w-4 h-4 mr-2" />
+                    Dashboard
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate('/profile')}>
+                    <User className="w-4 h-4 mr-2" />
+                    Hồ sơ cá nhân
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate('/bookings')}>
+                    <Hotel className="w-4 h-4 mr-2" />
+                    Đặt phòng của tôi
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleLogout} className="text-red-600">
+                    <LogOut className="w-4 h-4 mr-2" />
+                    Đăng xuất
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <>
+                <Link to="/login">
+                  <Button variant="ghost" size="sm">
+                    <User className="w-4 h-4 mr-2" />
+                    Đăng nhập
+                  </Button>
+                </Link>
+                <Link to="/register">
+                  <Button size="sm" className="bg-primary hover:bg-primary-hover transition-colors">
+                    Đăng ký
+                  </Button>
+                </Link>
+              </>
+            )}
           </div>
 
           {/* Mobile Menu Button */}
@@ -48,7 +108,7 @@ const Navbar = () => {
             onClick={() => setIsMenuOpen(!isMenuOpen)}
             title={isMenuOpen ? "Close menu" : "Open menu"}
             aria-label={isMenuOpen ? "Close menu" : "Open menu"}
-            aria-expanded={isMenuOpen ? true : false}
+            aria-expanded={isMenuOpen}
           >
             <Menu className="w-6 h-6 text-foreground" />
           </button>
@@ -64,18 +124,56 @@ const Navbar = () => {
               <Link to="/search" className="text-muted-foreground hover:text-primary transition-colors py-2">
                 Tìm khách sạn
               </Link>
+              
               <div className="flex flex-col gap-2 mt-3 pt-3 border-t border-border">
-                <Link to="/login">
-                  <Button variant="ghost" size="sm" className="w-full justify-center">
-                    <User className="w-4 h-4 mr-2" />
-                    Đăng nhập
-                  </Button>
-                </Link>
-                <Link to="/register">
-                  <Button size="sm" className="w-full bg-primary hover:bg-primary-hover">
-                    Đăng ký
-                  </Button>
-                </Link>
+                {user ? (
+                  <>
+                    <div className="py-2 text-sm text-muted-foreground">
+                      {user.email}
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full justify-start"
+                      onClick={() => navigate('/dashboard')}
+                    >
+                      <LayoutDashboard className="w-4 h-4 mr-2" />
+                      Dashboard
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full justify-start"
+                      onClick={() => navigate('/profile')}
+                    >
+                      <User className="w-4 h-4 mr-2" />
+                      Hồ sơ cá nhân
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full justify-start text-red-600"
+                      onClick={handleLogout}
+                    >
+                      <LogOut className="w-4 h-4 mr-2" />
+                      Đăng xuất
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Link to="/login">
+                      <Button variant="ghost" size="sm" className="w-full justify-center">
+                        <User className="w-4 h-4 mr-2" />
+                        Đăng nhập
+                      </Button>
+                    </Link>
+                    <Link to="/register">
+                      <Button size="sm" className="w-full bg-primary hover:bg-primary-hover">
+                        Đăng ký
+                      </Button>
+                    </Link>
+                  </>
+                )}
               </div>
             </div>
           </div>

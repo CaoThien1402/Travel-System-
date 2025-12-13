@@ -1,134 +1,224 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card } from '@/components/ui/card';
-import { Alert } from '@/components/ui/alert';
+import React, { useState } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
-export default function Register() {
+const Register: React.FC = () => {
   const navigate = useNavigate();
+  const { signUp } = useAuth();
+  
+  const [formData, setFormData] = useState({
+    fullName: '',
+    email: '',
+    password: '',
+    confirmPassword: ''
+  });
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
-    const formData = new FormData(e.currentTarget);
-    const name = formData.get('name') as string;
-    const email = formData.get('email') as string;
-    const password = formData.get('password') as string;
-    const confirmPassword = formData.get('confirmPassword') as string;
+    // Validation
+    if (formData.password !== formData.confirmPassword) {
+      setError('Mật khẩu xác nhận không khớp!');
+      setLoading(false);
+      return;
+    }
 
-    if (password !== confirmPassword) {
-      setError('Passwords do not match');
+    if (formData.password.length < 6) {
+      setError('Mật khẩu phải có ít nhất 6 ký tự!');
       setLoading(false);
       return;
     }
 
     try {
-      const response = await fetch('http://localhost:5000/api/auth/register', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ name, email, password }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Registration failed');
-      }
-
-      navigate('/login');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      await signUp(formData.email, formData.password, formData.fullName);
+      setSuccess(true);
+      // Không redirect ngay, cho user xem thông báo
+    } catch (err: any) {
+      setError(err.message || 'Đã có lỗi xảy ra khi đăng ký!');
     } finally {
       setLoading(false);
     }
   };
 
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value
+    });
+  };
+
+  if (success) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-md w-full space-y-8">
+          <div className="rounded-md bg-green-50 p-4">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-green-800">
+                  Đăng ký thành công!
+                </h3>
+                <div className="mt-2 text-sm text-green-700">
+                  <p>Vui lòng kiểm tra email <strong>{formData.email}</strong> để xác nhận tài khoản.</p>
+                  <p className="mt-2">Sau khi xác nhận, bạn có thể đăng nhập vào hệ thống.</p>
+                </div>
+                <div className="mt-4">
+                  <Link
+                    to="/login"
+                    className="text-sm font-medium text-green-600 hover:text-green-500"
+                  >
+                    Đến trang đăng nhập →
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
-      <Card className="w-full max-w-md p-6 space-y-6">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold">Create an account</h1>
-          <p className="text-muted-foreground">Register to get started</p>
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-md w-full space-y-8">
+        {/* Header */}
+        <div>
+          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+            Tạo tài khoản mới
+          </h2>
+          <p className="mt-2 text-center text-sm text-gray-600">
+            Đã có tài khoản?{' '}
+            <Link to="/login" className="font-medium text-blue-600 hover:text-blue-500">
+              Đăng nhập
+            </Link>
+          </p>
         </div>
 
-        {error && (
-          <Alert variant="destructive">
-            {error}
-          </Alert>
-        )}
+        {/* Form */}
+        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+          {error && (
+            <div className="rounded-md bg-red-50 p-4">
+              <p className="text-sm text-red-800">{error}</p>
+            </div>
+          )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <label htmlFor="name" className="text-sm font-medium">
-              Full Name
-            </label>
-            <Input
-              id="name"
-              name="name"
-              type="text"
-              placeholder="Enter your full name"
-              required
-            />
+          <div className="rounded-md shadow-sm space-y-4">
+            <div>
+              <label htmlFor="fullName" className="block text-sm font-medium text-gray-700">
+                Họ và tên
+              </label>
+              <input
+                id="fullName"
+                name="fullName"
+                type="text"
+                required
+                value={formData.fullName}
+                onChange={handleChange}
+                className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                placeholder="Nguyễn Văn A"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+                Email
+              </label>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                required
+                value={formData.email}
+                onChange={handleChange}
+                className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                placeholder="email@example.com"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                Mật khẩu
+              </label>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                required
+                value={formData.password}
+                onChange={handleChange}
+                className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                placeholder="Ít nhất 6 ký tự"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">
+                Xác nhận mật khẩu
+              </label>
+              <input
+                id="confirmPassword"
+                name="confirmPassword"
+                type="password"
+                required
+                value={formData.confirmPassword}
+                onChange={handleChange}
+                className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                placeholder="Nhập lại mật khẩu"
+              />
+            </div>
           </div>
 
-          <div className="space-y-2">
-            <label htmlFor="email" className="text-sm font-medium">
-              Email
-            </label>
-            <Input
-              id="email"
-              name="email"
-              type="email"
-              placeholder="Enter your email"
+          <div className="flex items-center">
+            <input
+              id="terms"
+              name="terms"
+              type="checkbox"
               required
+              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
             />
+            <label htmlFor="terms" className="ml-2 block text-sm text-gray-900">
+              Tôi đồng ý với{' '}
+              <a href="#" className="text-blue-600 hover:text-blue-500">
+                Điều khoản sử dụng
+              </a>{' '}
+              và{' '}
+              <a href="#" className="text-blue-600 hover:text-blue-500">
+                Chính sách bảo mật
+              </a>
+            </label>
           </div>
 
-          <div className="space-y-2">
-            <label htmlFor="password" className="text-sm font-medium">
-              Password
-            </label>
-            <Input
-              id="password"
-              name="password"
-              type="password"
-              placeholder="Create a password"
-              required
-            />
+          <div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
+            >
+              {loading ? 'Đang đăng ký...' : 'Đăng ký'}
+            </button>
           </div>
-
-          <div className="space-y-2">
-            <label htmlFor="confirmPassword" className="text-sm font-medium">
-              Confirm Password
-            </label>
-            <Input
-              id="confirmPassword"
-              name="confirmPassword"
-              type="password"
-              placeholder="Confirm your password"
-              required
-            />
-          </div>
-
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? 'Creating account...' : 'Register'}
-          </Button>
         </form>
 
-        <div className="text-center text-sm">
-          <span className="text-muted-foreground">Already have an account? </span>
-          <Button variant="link" onClick={() => navigate('/login')}>
-            Login
-          </Button>
+        <div className="mt-6 text-center">
+          <Link
+            to="/"
+            className="text-sm font-medium text-blue-600 hover:text-blue-500"
+          >
+            ← Quay về trang chủ
+          </Link>
         </div>
-      </Card>
+      </div>
     </div>
   );
-}
+};
+
+export default Register;
