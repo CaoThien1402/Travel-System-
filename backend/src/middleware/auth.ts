@@ -11,7 +11,7 @@ declare global {
 }
 
 // ==========================================
-// 🛡️ MIDDLEWARE XÁC THỰC TOKEN
+//  MIDDLEWARE XÁC THỰC TOKEN
 // ==========================================
 export const authenticateToken = async (
   req: Request,
@@ -54,7 +54,7 @@ export const authenticateToken = async (
 };
 
 // ==========================================
-// 👑 MIDDLEWARE KIỂM TRA ADMIN (Optional)
+//  MIDDLEWARE KIỂM TRA ADMIN (Optional)
 // ==========================================
 export const requireAdmin = async (
   req: Request,

@@ -4,7 +4,7 @@ import { supabase, supabaseAdmin } from '../supabase';
 const router = Router();
 
 // ==========================================
-// 🔐 ĐĂNG KÝ TÀI KHOẢN MỚI
+// ĐĂNG KÝ TÀI KHOẢN MỚI
 // ==========================================
 router.post('/register', async (req: Request, res: Response) => {
   try {
@@ -81,7 +81,7 @@ router.post('/register', async (req: Request, res: Response) => {
 });
 
 // ==========================================
-// 🔓 ĐĂNG NHẬP
+//  ĐĂNG NHẬP
 // ==========================================
 router.post('/login', async (req: Request, res: Response) => {
   try {
@@ -149,7 +149,7 @@ router.post('/login', async (req: Request, res: Response) => {
 });
 
 // ==========================================
-// 🚪 ĐĂNG XUẤT
+//  ĐĂNG XUẤT
 // ==========================================
 router.post('/logout', async (req: Request, res: Response) => {
   try {
@@ -175,7 +175,7 @@ router.post('/logout', async (req: Request, res: Response) => {
 });
 
 // ==========================================
-// 👤 LẤY THÔNG TIN USER HIỆN TẠI
+//  LẤY THÔNG TIN USER HIỆN TẠI
 // ==========================================
 router.get('/me', async (req: Request, res: Response) => {
   try {
@@ -226,7 +226,7 @@ router.get('/me', async (req: Request, res: Response) => {
 });
 
 // ==========================================
-// 📧 GỬI LẠI EMAIL XÁC NHẬN
+//  GỬI LẠI EMAIL XÁC NHẬN
 // ==========================================
 router.post('/resend-confirmation', async (req: Request, res: Response) => {
   try {
@@ -269,7 +269,7 @@ router.post('/resend-confirmation', async (req: Request, res: Response) => {
 });
 
 // ==========================================
-// 🔑 QUÊN MẬT KHẨU - GỬI EMAIL RESET
+//  QUÊN MẬT KHẨU - GỬI EMAIL RESET
 // ==========================================
 router.post('/forgot-password', async (req: Request, res: Response) => {
   try {
@@ -308,7 +308,7 @@ router.post('/forgot-password', async (req: Request, res: Response) => {
 });
 
 // ==========================================
-// 🔄 ĐỔI MẬT KHẨU
+//  ĐỔI MẬT KHẨU
 // ==========================================
 router.post('/reset-password', async (req: Request, res: Response) => {
   try {
