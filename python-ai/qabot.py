@@ -30,7 +30,7 @@ VECTOR_DB_PATH = os.getenv("VECTOR_DB_PATH") or os.path.join(CURRENT_DIR, "vecto
 EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "sentence-transformers/all-MiniLM-L6-v2")
 GEMINI_MODEL_NAME = os.getenv("GEMINI_MODEL_NAME", "gemini-2.5-flash")
 
-os.environ["GOOGLE_API_KEY"] = os.getenv("GOOGLE_API_KEY", "AIzaSyCILCu0xlD_Bo4FTgPLyIQqI7FwJDn_uKw")
+os.environ["GOOGLE_API_KEY"] = os.getenv("GOOGLE_API_KEY", "AIzaSyBR_cRkXeZrkmXg2I7EzyF0C-5ETHiZ6C0")
 # Hybrid weights (có thể tinh chỉnh)
 W_VEC = float(os.getenv("W_VEC", "0.50"))
 W_LEX = float(os.getenv("W_LEX", "0.35"))
