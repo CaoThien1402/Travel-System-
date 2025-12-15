@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { MessageCircle, X, Send, Loader2, Bot, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,10 +11,31 @@ interface Message {
   text: string;
   sender: 'user' | 'bot';
   timestamp: Date;
+  hotels?: HotelCard[];
 }
+
+interface HotelCard {
+  id?: number | null;
+  hotelname?: string;
+  name?: string;
+  district?: string;
+  price_text?: string;
+  priceText?: string;
+  price_vnd?: number | null;
+  imageUrl?: string;
+  image_url?: string;
+  detail_path?: string;
+  detail_url?: string;
+}
+
+const pickHotelName = (h: HotelCard) => h.hotelname || h.name || 'Khách sạn';
+const pickHotelPrice = (h: HotelCard) => h.price_text || h.priceText || (h.price_vnd ? `${Number(h.price_vnd).toLocaleString('vi-VN')} ₫/đêm` : '—');
+const pickHotelImage = (h: HotelCard) => h.imageUrl || h.image_url || '';
+const pickHotelLink = (h: HotelCard) => h.detail_path || h.detail_url || (h.id != null ? `/properties/${h.id}` : '');
 
 const Chatbot = () => {
   const [isOpen, setIsOpen] = useState(false);
+  const navigate = useNavigate();
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
@@ -69,9 +91,10 @@ const Chatbot = () => {
 
       const botMessage: Message = {
         id: (Date.now() + 1).toString(),
-        text: data.response || 'Xin lỗi, tôi không hiểu câu hỏi của bạn. Bạn có thể hỏi lại được không?',
+        text: data.response || data.answer || 'Xin lỗi, tôi không hiểu câu hỏi của bạn. Bạn có thể hỏi lại được không?',
         sender: 'bot',
         timestamp: new Date(),
+        hotels: Array.isArray(data.hotels) ? data.hotels : undefined,
       };
 
       setMessages((prev) => [...prev, botMessage]);
@@ -173,6 +196,63 @@ const Chatbot = () => {
                   )}
                 >
                   <p className="whitespace-pre-wrap leading-relaxed">{message.text}</p>
+
+                  {message.sender === 'bot' && message.hotels?.length ? (
+                    <div className="mt-3 space-y-2">
+                      {message.hotels.slice(0, 3).map((h, idx) => {
+                        const name = pickHotelName(h);
+                        const price = pickHotelPrice(h);
+                        const district = h.district || '';
+                        const img = pickHotelImage(h);
+                        const link = pickHotelLink(h);
+                        const canNavigate = Boolean(link);
+                        return (
+                          <button
+                            key={`${h.id ?? idx}-${name}`}
+                            type="button"
+                            onClick={() => {
+                              if (!canNavigate) return;
+                              navigate(link);
+                              setIsOpen(false);
+                            }}
+                            className={cn(
+                              "w-full text-left rounded-xl border bg-background/60 hover:bg-background transition p-3",
+                              !canNavigate && "opacity-70 cursor-not-allowed"
+                            )}
+                          >
+                            <div className="flex gap-3">
+                              <div className="h-16 w-20 rounded-lg overflow-hidden bg-muted flex-shrink-0">
+                                {img ? (
+                                  <img
+                                    src={img}
+                                    alt={name}
+                                    className="h-full w-full object-cover"
+                                    onError={(e) => {
+                                      (e.currentTarget as HTMLImageElement).style.display = 'none';
+                                    }}
+                                  />
+                                ) : null}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="font-semibold leading-snug line-clamp-2">{name}</div>
+                                <div className="text-xs opacity-80 mt-1">
+                                  {district ? `📍 ${district}` : null}
+                                </div>
+                                <div className="text-xs mt-1">💰 {price}</div>
+                                <div className="text-xs mt-1 text-primary">
+                                  {canNavigate ? 'Xem chi tiết →' : ''}
+                                </div>
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                      <div className="text-xs opacity-70">
+                        Bạn có thể bấm vào thẻ để xem trang chi tiết khách sạn.
+                      </div>
+                    </div>
+                  ) : null}
+
                   <span className="text-xs opacity-60 mt-1 block">
                     {message.timestamp.toLocaleTimeString('vi-VN', {
                       hour: '2-digit',

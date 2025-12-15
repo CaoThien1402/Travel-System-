@@ -30,11 +30,14 @@ VECTOR_DB_PATH = os.getenv("VECTOR_DB_PATH") or os.path.join(CURRENT_DIR, "vecto
 EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "sentence-transformers/all-MiniLM-L6-v2")
 GEMINI_MODEL_NAME = os.getenv("GEMINI_MODEL_NAME", "gemini-2.5-flash")
 
-os.environ["GOOGLE_API_KEY"] = os.getenv("GOOGLE_API_KEY", "YOUR KEY")
+os.environ["GOOGLE_API_KEY"] = os.getenv("GOOGLE_API_KEY", "AIzaSyCILCu0xlD_Bo4FTgPLyIQqI7FwJDn_uKw")
 # Hybrid weights (có thể tinh chỉnh)
 W_VEC = float(os.getenv("W_VEC", "0.50"))
 W_LEX = float(os.getenv("W_LEX", "0.35"))
 W_QUAL = float(os.getenv("W_QUAL", "0.15"))
+
+
+
 
 # =========================
 # TEXT NORMALIZATION
@@ -88,27 +91,9 @@ def _district_norm(district_str) -> str:
 
 
 def _format_price_vnd(vnd: Optional[float]) -> str:
-    """Format giá cho người dùng. Nếu None -> 'chưa cập nhật giá'."""
     if vnd is None or (isinstance(vnd, float) and vnd != vnd):
         return "chưa cập nhật giá"
-    try:
-        p = float(vnd)
-    except Exception:
-        return "chưa cập nhật giá"
-    if p <= 0:
-        return "chưa cập nhật giá"
-
-    p_int = int(round(p))
-
-    # Ưu tiên dạng K / triệu cho dễ đọc
-    if p_int >= 1_000_000:
-        s = f"{p_int/1_000_000:.1f}".replace(".0", "")
-        return f"{s} triệu VND/đêm"
-    if p_int >= 1_000:
-        return f"{p_int//1_000}K VND/đêm"
-
-    return f"{p_int:,} VND/đêm"
-
+    return f"khoảng {vnd/1_000_000:.1f} triệu VND/đêm"
 
 
 # =========================
@@ -390,8 +375,22 @@ def _row_to_hotel(row: pd.Series, match_reason: str = "") -> Dict[str, Any]:
     except Exception:
         star = None
 
+    # Frontend detail page typically uses route like /properties/:id
+    # Keep both snake_case + camelCase so FE can consume without extra mapping.
+    hotel_id = None
+    try:
+        raw_id = row.get("id")
+        hotel_id = int(raw_id) if raw_id == raw_id and raw_id is not None else None
+    except Exception:
+        hotel_id = None
+
+    image_url = row.get("imageUrl") or ""
+    detail_path = f"/properties/{hotel_id}" if hotel_id is not None else ""
+
     return {
+        "id": hotel_id,
         "hotelname": row.get("hotelname") or "",
+        "name": row.get("hotelname") or "",  # alias
         "address": row.get("address") or "",
         "district": row.get("district"),
         "district_num": row.get("_district_num"),
@@ -399,10 +398,18 @@ def _row_to_hotel(row: pd.Series, match_reason: str = "") -> Dict[str, Any]:
         "star": star,
         "price_vnd": price,
         "budget_vnd": price,  # backward-compat
-
         "price_text": _format_price_vnd(price),
-        "url": row.get("url_google") or "",
-        "image_url": row.get("imageUrl") or "",
+
+        "url_google": row.get("url_google") or "",
+        "url": row.get("url_google") or "",  # alias
+        "website": row.get("website") or "",
+
+        "imageUrl": image_url,
+        "image_url": image_url,
+
+        "detail_path": detail_path,
+        "detail_url": detail_path,
+
         "amenities": row.get("amenities") or "",
         "description": row.get("description1") or "",
         "reviews": row.get("reviews") or "",
@@ -709,10 +716,10 @@ def build_answer_chain(llm: ChatGoogleGenerativeAI):
     - Thêm 1 câu “gợi ý nhanh” phù hợp đối tượng: đi công tác / cặp đôi / đi khám bệnh / gần điểm tiện di chuyển… nhưng phải suy ra hợp lý từ JSON (ví dụ: quận, rating, star, mô tả), KHÔNG bịa địa danh.
 
     ĐỊNH DẠNG TRẢ LỜI:
-    VỀ LỰA CHỌN TỐT NHẤT 🏆
+    PHẦN 1: LỰA CHỌN TỐT NHẤT 🏆
     - 🏨 Tên:
     - 📍 Quận/khu vực:
-    - 💰 Giá: {{price_text}}
+    - 💰 Giá: {{price_vnd}} VND/đêm
     - ⭐ Hạng/đánh giá: (nếu có thì ghi; nếu không có thì bỏ)
     - ✨ Điểm nổi bật:
     • (ý 1 từ JSON)
@@ -720,9 +727,9 @@ def build_answer_chain(llm: ChatGoogleGenerativeAI):
     • (ý 3 nếu có)
     - ✅ Phù hợp nếu bạn: (1 câu ngắn)
 
-    Bonus: CÁC GỢI Ý ĐÁNG CÂN NHẮC 💡 (1–2 khách sạn tiếp theo)
+    PHẦN 2: CÁC GỢI Ý ĐÁNG CÂN NHẮC 💡 (1–2 khách sạn tiếp theo)
     Mỗi khách sạn 2–3 dòng:
-    - 🏨 Tên — 💰 {{price_text}}
+    - 🏨 Tên — 💰 {{price_vnd}} VND/đêm
     ✨ 1 câu mô tả điểm mạnh dựa trên JSON
 
     KẾT:
@@ -732,6 +739,9 @@ def build_answer_chain(llm: ChatGoogleGenerativeAI):
     """
     prompt = ChatPromptTemplate.from_template(template)
     return prompt | llm | StrOutputParser()
+
+
+
 
 
 # =========================
