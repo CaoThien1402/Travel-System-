@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Slider } from '@/components/ui/slider';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import HotelMap from '@/components/HotelMap';
 
 interface Hotel {
@@ -70,6 +70,7 @@ const HotelSearch = () => {
   const [priceRange, setPriceRange] = useState([0, 10000000]);
   const [minStars, setMinStars] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const navigate = useNavigate();
 
   // Helper function: Get featured hotels for map display
   const getFeaturedHotelsForMap = (hotelsList: Hotel[], maxCount: number = 100): Hotel[] => {
@@ -257,7 +258,7 @@ const HotelSearch = () => {
                         ? 'border-primary shadow-lg'
                         : 'border-transparent'
                     }`}
-                    onClick={() => setSelectedHotel(hotel)}
+                    onClick={() => navigate(`/properties/${hotel.id}`)}
                   >
                     <div className="flex gap-4">
                       {/* Hotel Image */}
