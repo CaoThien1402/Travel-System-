@@ -17,6 +17,7 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import HotelMap from "@/components/HotelMap";
+import Navbar from "@/components/Navbar";
 
 interface Hotel {
   id: number;
@@ -136,28 +137,40 @@ export default function PropertyDetail() {
   const displayAddress = useMemo(() => cleanAddress(hotel?.address || ""), [hotel]);
 
   if (isLoading) {
-    return <ContentSkeleton />;
+    return (
+      <div className="bg-background min-h-screen">
+        <Navbar />
+        <main className="pt-20">
+          <ContentSkeleton />
+        </main>
+      </div>
+    );
   }
 
   if (error || !hotel) {
     return (
-      <div className="container mx-auto px-4 py-12 space-y-6">
-        <Button variant="ghost" onClick={() => navigate(-1)} className="gap-2">
-          <ArrowLeft className="h-4 w-4" />
-          Quay lại
-        </Button>
-        <Card className="p-8 text-center">
-          <h2 className="text-2xl font-semibold mb-3">Không tìm thấy khách sạn</h2>
-          <p className="text-muted-foreground mb-6">
-            {error || "Vui lòng thử lại hoặc chọn khách sạn khác."}
-          </p>
-          <div className="flex items-center justify-center gap-3">
-            <Button onClick={() => navigate("/search")}>Quay về trang tìm kiếm</Button>
-            <Button variant="outline" onClick={() => window.location.reload()}>
-              Thử tải lại
+      <div className="bg-background min-h-screen">
+        <Navbar />
+        <main className="pt-20">
+          <div className="container mx-auto px-4 py-12 space-y-6">
+            <Button variant="ghost" onClick={() => navigate(-1)} className="gap-2">
+              <ArrowLeft className="h-4 w-4" />
+              Quay lại
             </Button>
+            <Card className="p-8 text-center">
+              <h2 className="text-2xl font-semibold mb-3">Không tìm thấy khách sạn</h2>
+              <p className="text-muted-foreground mb-6">
+                {error || "Vui lòng thử lại hoặc chọn khách sạn khác."}
+              </p>
+              <div className="flex items-center justify-center gap-3">
+                <Button onClick={() => navigate("/search")}>Quay về trang tìm kiếm</Button>
+                <Button variant="outline" onClick={() => window.location.reload()}>
+                  Thử tải lại
+                </Button>
+              </div>
+            </Card>
           </div>
-        </Card>
+        </main>
       </div>
     );
   }
@@ -188,7 +201,8 @@ export default function PropertyDetail() {
 
   return (
     <div className="bg-background min-h-screen">
-      <div className="container mx-auto px-4 py-8 space-y-8">
+      <Navbar />
+      <div className="container mx-auto px-4 py-8 space-y-8 pt-20">
         <div className="flex items-center justify-between gap-3">
           <Button variant="ghost" onClick={() => navigate(-1)} className="gap-2">
             <ArrowLeft className="h-4 w-4" />
