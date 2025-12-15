@@ -2,6 +2,8 @@ import sys
 import os
 import math
 import traceback
+from typing import Any, Dict, Optional
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -31,7 +33,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     print(f"❌ {error_msg}")
     print(traceback.format_exc())
     return JSONResponse(
-        status_code=200, 
+        status_code=200,
         content={
             "answer": error_msg,
             "hotels": []
@@ -40,56 +42,88 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # --- IMPORT LOGIC ---
 try:
-    # Thêm thư mục hiện tại vào sys.path để tìm thấy qabot.py
     sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-    from qabot import chat_with_agent, load_vector_retriever, load_hotel_dataframe
-    print("✅ Đã import qabot.")
+
+    # Code mới trong qabot.py
+    from qabot import (
+        chat_with_agent,
+        load_hotel_dataframe,
+        load_vector_db,
+        build_lexical_index,
+        load_llm,
+    )
+    print("✅ Đã import qabot (new).")
 except ImportError as e:
     print(f"⚠️ Lỗi import qabot: {e}")
-    def chat_with_agent(*args, **kwargs): raise e
-    load_vector_retriever = None
-    load_hotel_dataframe = None
+    def chat_with_agent(*args, **kwargs):  # type: ignore
+        raise e
 
-# --- LOAD DATA ---
-RETRIEVER = None
+    load_hotel_dataframe = None
+    load_vector_db = None
+    build_lexical_index = None
+    load_llm = None
+
+# --- LOAD DATA (cache) ---
+VECTOR_DB = None
 DF = None
+THR = None
+LEX = None
+LLM = None
 
 @app.on_event("startup")
 async def startup():
-    global RETRIEVER, DF
+    global VECTOR_DB, DF, THR, LEX, LLM
     try:
-        if load_vector_retriever: 
-            RETRIEVER = load_vector_retriever()
+        if load_hotel_dataframe:
+            DF, THR = load_hotel_dataframe()
+            print("✅ Đã load CSV + thresholds")
+
+        if load_vector_db:
+            VECTOR_DB = load_vector_db()
             print("✅ Đã load Vector DB")
-        if load_hotel_dataframe: 
-            DF = load_hotel_dataframe()
-            print("✅ Đã load CSV")
+
+        if build_lexical_index and DF is not None:
+            LEX = build_lexical_index(DF, THR)
+            print("✅ Đã build Lexical Index (TF-IDF)")
+
+        if load_llm:
+            # Lưu ý: cần export GOOGLE_API_KEY trước khi chạy server
+            LLM = load_llm()
+            print("✅ Đã load LLM")
+
     except Exception as e:
         print(f"⚠️ Lỗi khởi động (Load Data): {e}")
+        print(traceback.format_exc())
 
 class ChatRequest(BaseModel):
     query: str
     top_k: int = 5
+    # Cho phép truyền filter từ UI (tuỳ bạn dùng hay không)
+    # Ví dụ: {"district_nums":[5], "max_price": 500000, "sort_by":"Giá tăng dần"}
+    filters: Optional[Dict[str, Any]] = None
 
 @app.post("/api/chat")
 async def chat_endpoint(request: ChatRequest):
     print(f"📩 Nhận câu hỏi: {request.query}")
-    
-    # Gọi hàm AI
+
     raw_result = chat_with_agent(
         user_input=request.query,
         top_k=request.top_k,
-        retriever=RETRIEVER,
-        df=DF
+        llm=LLM,                # cache LLM
+        vector_db=VECTOR_DB,    # cache FAISS
+        df=DF,                  # cache dataframe
+        thr=THR,                # cache thresholds
+        lex=LEX,                # cache lexical index
+        filters=request.filters # optional
     )
 
-    # Xử lý kết quả trả về
     answer = "Không có câu trả lời"
     hotels = []
 
     if isinstance(raw_result, dict):
         answer = raw_result.get("answer", str(raw_result))
         tool_res = raw_result.get("tool_result", {})
+        # tool_res có dạng {"tool_name":..., "query":..., "results"🙁...]}
         if isinstance(tool_res, dict):
             hotels = tool_res.get("results", [])
         elif isinstance(tool_res, list):
@@ -97,15 +131,8 @@ async def chat_endpoint(request: ChatRequest):
     else:
         answer = str(raw_result)
 
-   
-    # Gói dữ liệu vào dict cuối cùng và lọc sạch
     final_response = {
         "answer": answer,
         "hotels": hotels
     }
-    
-    clean_response = sanitize_for_json(final_response)
-    
-    return clean_response
-
-# Chạy: uvicorn api:app --host 0.0.0.0 --port 8000
+    return sanitize_for_json(final_response)
