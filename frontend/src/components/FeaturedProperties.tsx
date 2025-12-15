@@ -13,7 +13,7 @@ interface Hotel {
   imageUrl?: string;
 }
 
-const FEATURED_IDS = [64, 76, 176, 205, 172, 14];
+const FEATURED_IDS = [64, 65, 176, 205, 172, 14];
 
 const FeaturedProperties = () => {
   const navigate = useNavigate();
