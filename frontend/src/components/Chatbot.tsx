@@ -125,7 +125,7 @@ const Chatbot = () => {
       <Button
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
-          "fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full shadow-lg transition-all duration-300",
+          "fixed bottom-6 right-6 z-[9999] h-14 w-14 rounded-full shadow-lg transition-all duration-300",
           "bg-gradient-to-r from-primary to-primary-hover hover:scale-110",
           isOpen && "opacity-0 pointer-events-none"
         )}
@@ -137,7 +137,7 @@ const Chatbot = () => {
       {/* Overlay */}
       <div
         className={cn(
-          "fixed inset-0 bg-black/50 z-40 transition-opacity duration-300",
+          "fixed inset-0 bg-black/50 z-[9998] transition-opacity duration-300",
           isOpen ? "opacity-100" : "opacity-0 pointer-events-none"
         )}
         onClick={() => setIsOpen(false)}
@@ -146,7 +146,7 @@ const Chatbot = () => {
       {/* Chat Sidebar */}
       <div
         className={cn(
-          "fixed top-0 right-0 z-50 w-full md:w-1/3 h-full bg-card shadow-2xl transition-transform duration-300 flex flex-col",
+          "fixed top-0 right-0 z-[9999] w-full md:w-1/3 h-full bg-card shadow-2xl transition-transform duration-300 flex flex-col",
           isOpen ? "translate-x-0" : "translate-x-full"
         )}
       >
