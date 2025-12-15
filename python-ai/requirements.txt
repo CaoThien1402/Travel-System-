@@ -1,34 +1,36 @@
-pandas
-numpy
-torch
-transformers
-sentence-transformers
-folium
-streamlit
-requests
-streamlit-folium
 # --- Xử lý dữ liệu ---
 pandas
+numpy
 
-# --- LangChain Framework (Core & Extensions) ---
-langchain
-langchain-core
-langchain-community
-langchain-text-splitters
+# --- LangChain Framework (Core & Extensions) - Updated for Pydantic V2 ---
+langchain>=0.3.0
+langchain-core>=0.3.0
+langchain-community>=0.3.0
+langchain-text-splitters>=0.3.0
 
 # --- Các Model AI & Embeddings ---
-langchain-google-genai
-langchain-huggingface
+langchain-google-genai>=0.2.0
+langchain-huggingface>=0.1.0
 sentence-transformers
 torch
+transformers
 
 # --- Vector Database ---
 # Dùng faiss-cpu cho máy thường/server không GPU. 
 # Nếu có NVIDIA GPU, hãy đổi thành faiss-gpu để nhanh hơn.
 faiss-cpu
 
+# --- Web Framework ---
+folium
+streamlit
+streamlit-folium
+fastapi
+uvicorn
+
 # --- Tiện ích hệ thống ---
 python-dotenv
 rank_bm25
-fastapi 
-unicorn
+requests
+
+# --- Pydantic V2 (for Python 3.14 compatibility) ---
+pydantic>=2.0.0

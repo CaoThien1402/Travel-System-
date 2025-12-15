@@ -1,11 +1,20 @@
 import { useState, useEffect } from 'react';
-import { MapPin, Star, DollarSign, Filter, Search, Hotel as HotelIcon, User } from 'lucide-react';
+import { MapPin, Star, DollarSign, Filter, Search, Hotel as HotelIcon, User, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Slider } from '@/components/ui/slider';
 import { Link, useNavigate } from 'react-router-dom';
 import HotelMap from '@/components/HotelMap';
+import { useAuth } from '@/contexts/AuthContext';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 interface Hotel {
   id: number;
@@ -71,6 +80,16 @@ const HotelSearch = () => {
   const [minStars, setMinStars] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
+  const { user, signOut } = useAuth();
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      navigate('/');
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+  };
 
   // Helper function: Get featured hotels for map display
   const getFeaturedHotelsForMap = (hotelsList: Hotel[], maxCount: number = 100): Hotel[] => {
@@ -155,17 +174,51 @@ const HotelSearch = () => {
               <Link to="/" className="text-muted-foreground hover:text-primary transition-colors">
                 Trang chủ
               </Link>
-              <Link to="/login">
-                <Button variant="ghost" size="sm">
-                  <User className="w-4 h-4 mr-2" />
-                  Đăng nhập
-                </Button>
-              </Link>
-              <Link to="/register">
-                <Button size="sm" className="bg-primary hover:bg-primary-hover">
-                  Đăng ký
-                </Button>
-              </Link>
+              {user ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="sm">
+                      <User className="w-4 h-4 mr-2" />
+                      {user.email}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuLabel>Tài khoản của tôi</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => navigate('/dashboard')}>
+                      <User className="w-4 h-4 mr-2" />
+                      Dashboard
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => navigate('/profile')}>
+                      <User className="w-4 h-4 mr-2" />
+                      Hồ sơ
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => navigate('/bookings')}>
+                      <HotelIcon className="w-4 h-4 mr-2" />
+                      Đặt phòng của tôi
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={handleSignOut}>
+                      <LogOut className="w-4 h-4 mr-2" />
+                      Đăng xuất
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : (
+                <>
+                  <Link to="/login">
+                    <Button variant="ghost" size="sm">
+                      <User className="w-4 h-4 mr-2" />
+                      Đăng nhập
+                    </Button>
+                  </Link>
+                  <Link to="/register">
+                    <Button size="sm" className="bg-primary hover:bg-primary-hover">
+                      Đăng ký
+                    </Button>
+                  </Link>
+                </>
+              )}
             </div>
           </div>
         </div>
