@@ -103,6 +103,10 @@ export default function PropertyDetail() {
   const [expandedReviews, setExpandedReviews] = useState<Record<number, boolean>>({});
 
   useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
+  useEffect(() => {
     const fetchHotel = async () => {
       if (!id) {
         setError("Thiếu mã khách sạn");
