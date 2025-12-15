@@ -1,79 +1,65 @@
-import PropertyCard from "./PropertyCard";
-import hotel1 from "@/assets/hotel-1.jpg";
-import hotel2 from "@/assets/hotel-2.jpg";
-import hotel3 from "@/assets/hotel-3.jpg";
-import hotel4 from "@/assets/hotel-4.jpg";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import PropertyCard from "./PropertyCard";
+
+interface Hotel {
+  id: number;
+  hotelname: string;
+  district: string;
+  price: number;
+  star: number;
+  totalScore?: number;
+  reviewsCount?: number;
+  imageUrl?: string;
+}
+
+const FEATURED_IDS = [64, 76, 176, 205, 172, 14];
 
 const FeaturedProperties = () => {
   const navigate = useNavigate();
+  const [properties, setProperties] = useState<Hotel[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  const properties = [
-    {
-      id: "1",
-      image: hotel1,
-      name: "Khách Sạn Seaside Luxury",
-      location: "Đà Nẵng, Việt Nam",
-      rating: 4.8,
-      reviews: 1234,
-      price: 1200000,
-      originalPrice: 1800000,
-      amenities: ["wifi", "breakfast", "parking"],
-    },
-    {
-      id: "2",
-      image: hotel2,
-      name: "Homestay Green Valley",
-      location: "Đà Lạt, Lâm Đồng",
-      rating: 4.9,
-      reviews: 892,
-      price: 500000,
-      originalPrice: 750000,
-      amenities: ["wifi", "breakfast"],
-    },
-    {
-      id: "3",
-      image: hotel3,
-      name: "Resort Paradise Beach",
-      location: "Phú Quốc, Kiên Giang",
-      rating: 4.7,
-      reviews: 2156,
-      price: 2500000,
-      originalPrice: 3500000,
-      amenities: ["wifi", "breakfast", "parking"],
-    },
-    {
-      id: "4",
-      image: hotel4,
-      name: "Boutique Hotel Central",
-      location: "Hà Nội, Việt Nam",
-      rating: 4.6,
-      reviews: 678,
-      price: 800000,
-      amenities: ["wifi", "parking"],
-    },
-    {
-      id: "5",
-      image: hotel1,
-      name: "Ocean View Resort",
-      location: "Nha Trang, Khánh Hòa",
-      rating: 4.9,
-      reviews: 1567,
-      price: 1800000,
-      originalPrice: 2400000,
-      amenities: ["wifi", "breakfast", "parking"],
-    },
-    {
-      id: "6",
-      image: hotel2,
-      name: "Mountain Retreat",
-      location: "Sapa, Lào Cai",
-      rating: 4.8,
-      reviews: 945,
-      price: 600000,
-      amenities: ["wifi", "breakfast"],
-    },
-  ];
+  useEffect(() => {
+    const fetchFeatured = async () => {
+      try {
+        const results = await Promise.all(
+          FEATURED_IDS.map(async (id) => {
+            const res = await fetch(
+              `http://localhost:5000/api/properties/${id}`
+            );
+            if (!res.ok) throw new Error(`Failed to load property ${id}`);
+            return (await res.json()) as Hotel;
+          })
+        );
+        setProperties(results);
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Đã xảy ra lỗi khi tải khách sạn nổi bật"
+        );
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchFeatured();
+  }, []);
+
+  const featuredCards = useMemo(() => {
+    return properties.map((hotel) => ({
+      id: hotel.id,
+      image: hotel.imageUrl,
+      name: hotel.hotelname,
+      location: hotel.district || "Hồ Chí Minh",
+      rating: hotel.totalScore || hotel.star || 0,
+      reviews: hotel.reviewsCount || 0,
+      price: hotel.price || 0,
+      amenities: ["wifi", "parking", "breakfast"], // simple badges for visual consistency
+    }));
+  }, [properties]);
 
   return (
     <section className="py-16 md:py-24 bg-background">
@@ -87,17 +73,28 @@ const FeaturedProperties = () => {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {properties.map((property) => (
-            <div
-              key={property.id}
-              onClick={() => navigate(`/properties/${property.id}`)}
-              className="cursor-pointer"
-            >
-              <PropertyCard {...property} />
-            </div>
-          ))}
-        </div>
+        {error ? (
+          <p className="text-center text-muted-foreground">{error}</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {isLoading
+              ? Array.from({ length: 6 }).map((_, idx) => (
+                  <div
+                    key={idx}
+                    className="rounded-xl bg-muted animate-pulse h-[320px]"
+                  />
+                ))
+              : featuredCards.map((property) => (
+                  <div
+                    key={property.id}
+                    onClick={() => navigate(`/properties/${property.id}`)}
+                    className="cursor-pointer"
+                  >
+                    <PropertyCard {...property} />
+                  </div>
+                ))}
+          </div>
+        )}
       </div>
     </section>
   );
