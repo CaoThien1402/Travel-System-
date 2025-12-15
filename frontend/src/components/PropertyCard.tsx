@@ -1,5 +1,6 @@
 import { Star, MapPin, Wifi, Coffee, Car, LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useEffect, useState } from "react";
 
 interface PropertyCardProps {
   image: string;
@@ -22,6 +23,18 @@ const PropertyCard = ({
   originalPrice,
   amenities = [],
 }: PropertyCardProps) => {
+  const [imgSrc, setImgSrc] = useState(image || "");
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const [hasError, setHasError] = useState(false);
+
+  useEffect(() => {
+    setImgSrc(image || "");
+    setIsLoaded(false);
+    setRetryCount(0);
+    setHasError(false);
+  }, [image]);
+
   const amenityIcons: { [key: string]: LucideIcon } = {
     wifi: Wifi,
     breakfast: Coffee,
@@ -31,11 +44,35 @@ const PropertyCard = ({
   return (
     <div className="group bg-card rounded-xl overflow-hidden shadow-soft hover:shadow-large transition-all duration-300 cursor-pointer">
       <div className="relative overflow-hidden aspect-[4/3]">
-        <img
-          src={image}
-          alt={name}
-          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-        />
+        {!isLoaded && !hasError && imgSrc && (
+          <div className="absolute inset-0 bg-muted animate-pulse" aria-hidden="true" />
+        )}
+        {imgSrc && !hasError ? (
+          <img
+            src={imgSrc}
+            alt={name}
+            loading="lazy"
+            decoding="async"
+            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+            onLoad={() => setIsLoaded(true)}
+            onError={() => {
+              if (retryCount < 2 && image) {
+                // retry after small delay with cache buster to allow slower connections
+                setTimeout(() => {
+                  setRetryCount((c) => c + 1);
+                  setImgSrc(`${image}?retry=${Date.now()}`);
+                }, 1200);
+              } else {
+                setHasError(true);
+                setIsLoaded(true);
+              }
+            }}
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-muted text-muted-foreground">
+            <span className="text-sm">Không có ảnh</span>
+          </div>
+        )}
         {originalPrice && (
           <div className="absolute top-3 right-3 bg-secondary text-secondary-foreground px-3 py-1 rounded-full text-sm font-semibold shadow-medium">
             -{Math.round(((originalPrice - price) / originalPrice) * 100)}%
