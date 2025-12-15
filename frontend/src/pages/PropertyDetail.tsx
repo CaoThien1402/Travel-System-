@@ -293,7 +293,18 @@ export default function PropertyDetail() {
               </div>
             </div>
             <div className="flex flex-col gap-3 pt-2">
-              <Button className="w-full">Đặt ngay</Button>
+              {website ? (
+                <Button asChild className="w-full">
+                  <a href={website} target="_blank" rel="noreferrer">
+                    <Globe className="h-4 w-4 mr-2" />
+                    Website khách sạn
+                  </a>
+                </Button>
+              ) : (
+                <Button className="w-full" disabled>
+                  Website khách sạn
+                </Button>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 {phone ? (
                   <Button asChild variant="outline" className="w-full">
@@ -308,14 +319,6 @@ export default function PropertyDetail() {
                     <a href={url_google} target="_blank" rel="noreferrer">
                       <ExternalLink className="h-4 w-4 mr-2" />
                       Google Maps
-                    </a>
-                  </Button>
-                ) : null}
-                {website ? (
-                  <Button asChild variant="outline" className="w-full col-span-2">
-                    <a href={website} target="_blank" rel="noreferrer">
-                      <Globe className="h-4 w-4 mr-2" />
-                      Website khách sạn
                     </a>
                   </Button>
                 ) : null}
