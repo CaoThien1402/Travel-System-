@@ -2,10 +2,11 @@ import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 
-// Import router chat
+// Import routers
 import authRoutes from './routes/auth';
 import propertiesRoutes from './routes/properties';
 import chatRoutes from './routes/chat';
+import semanticSearchRoutes from './routes/semanticSearch';
 
 
 dotenv.config();
@@ -35,13 +36,13 @@ app.use('/api/auth', authRoutes);
 // Properties routes
 app.use('/api/properties', propertiesRoutes);
 
-// ĐĂNG KÝ ROUTE CHAT
+// ĐĂNG KÝ ROUTE CHAT (Chatbot - gọi Python AI server)
 // Đường dẫn sẽ là: /api + /chat = /api/chat
 app.use('/api', chatRoutes); 
 
-// Các routes khác (mở lại khi bạn fix xong các file đó)
-// app.use('/api/auth', authRoutes);
-app.use('/api/properties', propertiesRoutes);
+// ĐĂNG KÝ ROUTE SEMANTIC SEARCH (Search Bar - gọi Python script trực tiếp)
+// Đường dẫn: /api/semantic-search
+app.use('/api', semanticSearchRoutes);
 
 // --- Error Handling ---
 app.use((req, res) => {

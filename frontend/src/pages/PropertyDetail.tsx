@@ -36,6 +36,7 @@ interface Hotel {
   website?: string;
   phone?: string;
   price: number;
+  priceRange?: string;
   imageUrl?: string;
   star: number;
   rank?: number;
@@ -45,9 +46,27 @@ interface Hotel {
   reviews?: string[];
 }
 
+const formatPrice = (value: number): string => {
+  if (!value || Number.isNaN(value)) return "0";
+  return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+};
+
 const formatCurrency = (value?: number) => {
   if (!value || Number.isNaN(value)) return "—";
-  return `${value.toLocaleString("vi-VN")} ₫`;
+  return `VND ${formatPrice(value)}`;
+};
+
+const formatPriceRange = (priceRange?: string, minPrice?: number) => {
+  if (!priceRange || !priceRange.includes('-')) {
+    return minPrice ? `VND ${formatPrice(minPrice)}` : "—";
+  }
+  const parts = priceRange.split('-').map(p => p.trim());
+  const min = parseFloat(parts[0]);
+  const max = parseFloat(parts[1]);
+  if (isNaN(min) || isNaN(max)) {
+    return minPrice ? `VND ${formatPrice(minPrice)}` : "—";
+  }
+  return `VND ${formatPrice(min)} - ${formatPrice(max)}`;
 };
 
 const formatStarText = (star?: number) => {
@@ -270,7 +289,7 @@ export default function PropertyDetail() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-muted-foreground text-sm">Giá mỗi đêm từ</p>
-                <p className="text-3xl font-bold text-primary">{formatCurrency(price)}</p>
+                <p className="text-3xl font-bold text-primary">{formatPriceRange(hotel?.priceRange, price)}</p>
               </div>
               <Sparkles className="h-6 w-6 text-primary" />
             </div>
@@ -355,7 +374,7 @@ export default function PropertyDetail() {
               </div>
               <div className="rounded-lg border p-3">
                 <p className="text-muted-foreground">Mức giá</p>
-                <p className="font-semibold">{formatCurrency(price)}</p>
+                <p className="font-semibold">{formatPriceRange(hotel?.priceRange, price)}</p>
               </div>
             </div>
           </Card>

@@ -1,0 +1,5 @@
+.env
+__pycache__/
+*.pyc
+vectorstores/
+hotel_embeddings.npy

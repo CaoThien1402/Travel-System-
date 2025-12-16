@@ -134,9 +134,18 @@ const parseStarRating = (value: string): number => {
 // ========================================
 /**
  * Parses price value, handles empty and invalid values
+ * Supports price ranges like "490000 - 1150000" (returns min price)
  */
 const parsePrice = (value: string): number => {
   if (!value || value === '' || value === 'None' || value === 'nan') return 0;
+  
+  // Check if it's a price range (e.g., "490000 - 1150000")
+  if (value.includes('-')) {
+    const parts = value.split('-').map(p => p.trim());
+    const minPrice = parseFloat(parts[0]);
+    return isNaN(minPrice) ? 0 : minPrice;
+  }
+  
   const num = parseFloat(value);
   return isNaN(num) ? 0 : num;
 };
@@ -209,6 +218,7 @@ export const loadHotelsFromCSV = async (): Promise<Hotel[]> => {
             website: row.website || '',
             phone: row.phone || '',
             price: parsePrice(row.price),                      // Use helper function
+            priceRange: row.price || '',                       // Keep original price range
             imageUrl: row.imageUrl || '',
             star: parseStarRating(row.star),                   // Parse star from text like "Khách sạn 2 sao"
             rank: parseFloat(row.rank) || 0,
