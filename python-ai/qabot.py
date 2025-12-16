@@ -4,6 +4,7 @@ import json
 import unicodedata
 from dataclasses import dataclass
 from typing import List, Dict, Any, Optional, Tuple
+
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -32,14 +33,12 @@ CSV_PATH = os.getenv("HOTEL_CSV_PATH") or os.path.join(CURRENT_DIR, "..", "backe
 VECTOR_DB_PATH = os.getenv("VECTOR_DB_PATH") or os.path.join(CURRENT_DIR, "vectorstores", "db_faiss")
 
 EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "sentence-transformers/all-MiniLM-L6-v2")
-GEMINI_MODEL_NAME = os.getenv("GEMINI_MODEL_NAME", "gemini-2.5-flash")
+GEMINI_MODEL_NAME = os.getenv("GEMINI_MODEL_NAME", "gemini-2.5-flash-lite")
 
 # Hybrid weights (có thể tinh chỉnh)
 W_VEC = float(os.getenv("W_VEC", "0.50"))
 W_LEX = float(os.getenv("W_LEX", "0.35"))
 W_QUAL = float(os.getenv("W_QUAL", "0.15"))
-
-
 
 
 # =========================
@@ -93,10 +92,107 @@ def _district_norm(district_str) -> str:
     return s
 
 
-def _format_price_vnd(vnd: Optional[float]) -> str:
-    if vnd is None or (isinstance(vnd, float) and vnd != vnd):
+# =========================
+# PRICE PARSING (NEW: support range like "490000 - 1150000")
+# =========================
+
+def _parse_price_number(piece: str) -> Optional[int]:
+    """Parse 1 phần giá sang VND integer.
+
+    Hỗ trợ:
+    - "490000" / "1,150,000" / "1.150.000"
+    - "1.2 triệu", "800k" (phòng trường hợp data khác)
+    """
+    if piece is None:
+        return None
+    s = str(piece).strip().lower()
+    if not s or s in {"nan", "none"}:
+        return None
+
+    s = s.replace("₫", "").replace("vnd", "").strip()
+
+    m = re.search(r"(\d+(?:[\.,]\d+)?)\s*(trieu|triệu|million|m)\b", s)
+    if m:
+        num = float(m.group(1).replace(",", "."))
+        return int(num * 1_000_000)
+
+    m = re.search(r"(\d+(?:[\.,]\d+)?)\s*(k|nghin|nghìn)\b", s)
+    if m:
+        num = float(m.group(1).replace(",", "."))
+        return int(num * 1_000)
+
+    digits = re.sub(r"[^0-9]", "", s)
+    if not digits:
+        return None
+    try:
+        return int(digits)
+    except Exception:
+        return None
+
+
+def _parse_price_range(value) -> Tuple[Optional[int], Optional[int], Optional[float]]:
+    """Parse cột price mới: "min - max".
+
+    Returns: (min_vnd, max_vnd, mid_vnd)
+    """
+    if value is None or (isinstance(value, float) and value != value) or pd.isna(value):
+        return None, None, None
+
+    if isinstance(value, (int, float)):
+        try:
+            v = float(value)
+            if v != v:
+                return None, None, None
+            iv = int(v)
+            return iv, iv, float(iv)
+        except Exception:
+            return None, None, None
+
+    s = str(value).strip()
+    if not s:
+        return None, None, None
+
+    s = s.replace("–", "-").replace("—", "-")
+
+    if "-" in s:
+        parts = [p.strip() for p in s.split("-") if p.strip()]
+        if len(parts) >= 2:
+            a = _parse_price_number(parts[0])
+            b = _parse_price_number(parts[1])
+            if a is None and b is None:
+                return None, None, None
+            if a is None:
+                return b, b, float(b)
+            if b is None:
+                return a, a, float(a)
+            lo, hi = (a, b) if a <= b else (b, a)
+            return lo, hi, (lo + hi) / 2.0
+
+    n = _parse_price_number(s)
+    if n is None:
+        return None, None, None
+    return n, n, float(n)
+
+
+def _format_vnd_int(v: Optional[int]) -> str:
+    if v is None:
+        return ""
+    try:
+        return f"{int(v):,}".replace(",", ".")
+    except Exception:
+        return ""
+
+
+def _format_price_range_vnd(min_vnd: Optional[int], max_vnd: Optional[int]) -> str:
+    if min_vnd is None and max_vnd is None:
         return "chưa cập nhật giá"
-    return f"khoảng {vnd/1_000_000:.1f} triệu VND/đêm"
+    if min_vnd is None:
+        return f"khoảng {_format_vnd_int(max_vnd)} VND/đêm"
+    if max_vnd is None:
+        return f"khoảng {_format_vnd_int(min_vnd)} VND/đêm"
+    if min_vnd == max_vnd:
+        return f"khoảng {_format_vnd_int(min_vnd)} VND/đêm"
+    return f"{_format_vnd_int(min_vnd)} – {_format_vnd_int(max_vnd)} VND/đêm"
 
 
 # =========================
@@ -167,11 +263,6 @@ def _parse_constraints(query: str, thr: Optional[PriceThresholds]) -> Dict[str, 
     if nums:
         cons["district_nums"] = sorted(nums)
 
-    # District name (ví dụ: binh thanh, go vap...)
-    # Nếu query có 'ở bình thạnh' hay 'quan binh thanh' thì bắt theo token.
-    # (Danh sách cụ thể sẽ được bổ sung ở tầng filter dựa trên dữ liệu.)
-    # Ở đây giữ raw để tầng sau có thể map.
-    #
     # Star
     stars = []
     for m in re.finditer(r"(\d+)\s*sao", q):
@@ -287,7 +378,9 @@ def load_llm() -> ChatGoogleGenerativeAI:
 
 def load_vector_db() -> FAISS:
     if not os.path.exists(VECTOR_DB_PATH):
-        raise FileNotFoundError(f"Không tìm thấy vector DB ở: {VECTOR_DB_PATH}. Hãy chạy prepare_vector_db_v2.py trước.")
+        raise FileNotFoundError(
+            f"Không tìm thấy vector DB ở: {VECTOR_DB_PATH}. Hãy chạy prepare_vector_db.py trước."
+        )
     device = _detect_device()
     embeddings = HuggingFaceEmbeddings(
         model_name=EMBEDDING_MODEL_NAME,
@@ -300,13 +393,28 @@ def load_vector_db() -> FAISS:
 def load_hotel_dataframe() -> Tuple[pd.DataFrame, Optional[PriceThresholds]]:
     if not os.path.exists(CSV_PATH):
         raise FileNotFoundError(f"Không tìm thấy CSV: {CSV_PATH}")
+
     df = pd.read_csv(CSV_PATH)
+
     df["_star_num"] = df["star"].apply(_extract_star_from_row)
     df["_district_num"] = df["district"].apply(_extract_district_num)
     df["_district_norm"] = df["district"].apply(_district_norm)
+
+    # Name norms (giữ để matching)
     df["hotelname_norm"] = df["hotelname"].astype(str).str.strip().str.lower()
-    df["hotelname_norm_simple"] = df["hotelname"].apply(lambda x: _norm_text(re.sub(r"\b(khach san|khách sạn|hotel)\b", " ", str(x))))
-    df["_price_vnd"] = pd.to_numeric(df["price"], errors="coerce")
+    df["hotelname_norm_simple"] = df["hotelname"].apply(
+        lambda x: _norm_text(re.sub(r"\b(khach san|khách sạn|hotel)\b", " ", str(x)))
+    )
+
+    # NEW: parse price range
+    parsed = df["price"].apply(_parse_price_range)
+    df["_price_min_vnd"] = parsed.apply(lambda t: t[0])
+    df["_price_max_vnd"] = parsed.apply(lambda t: t[1])
+    df["_price_mid_vnd"] = parsed.apply(lambda t: t[2])
+
+    # Backward-compat: keep _price_vnd as representative (mid)
+    df["_price_vnd"] = pd.to_numeric(df["_price_mid_vnd"], errors="coerce")
+
     thr = _calc_price_thresholds(df["_price_vnd"])
     return df, thr
 
@@ -324,8 +432,8 @@ class LexicalIndex:
 
 def build_lexical_index(df: pd.DataFrame, thr: Optional[PriceThresholds]) -> LexicalIndex:
     def row_text(row: pd.Series) -> str:
-        price = row.get("_price_vnd")
-        bucket = _price_bucket(price, thr)
+        price_mid = row.get("_price_vnd")
+        bucket = _price_bucket(price_mid, thr)
         parts = [
             row.get("hotelname", ""),
             row.get("address", ""),
@@ -336,6 +444,9 @@ def build_lexical_index(df: pd.DataFrame, thr: Optional[PriceThresholds]) -> Lex
             f"star {row.get('_star_num') or ''}",
             f"rating {row.get('totalScore') or ''}",
             f"price_bucket {bucket}",
+            # thêm cả range để keyword match tốt hơn
+            f"price_min {row.get('_price_min_vnd') or ''}",
+            f"price_max {row.get('_price_max_vnd') or ''}",
         ]
         return _norm_text(" ".join(str(p) for p in parts if p))
 
@@ -362,17 +473,24 @@ def lexical_topk(query: str, lex: LexicalIndex, k: int = 50) -> List[Tuple[int, 
 # =========================
 
 def _row_to_hotel(row: pd.Series, match_reason: str = "") -> Dict[str, Any]:
-    price = row.get("_price_vnd")
+    # Representative price = mid (backward compat)
+    price_mid = row.get("_price_vnd")
+    price_min = row.get("_price_min_vnd")
+    price_max = row.get("_price_max_vnd")
+
     rating = row.get("totalScore")
     star = row.get("_star_num")
+
     try:
-        price = float(price) if price == price else None
+        price_mid = float(price_mid) if price_mid == price_mid else None
     except Exception:
-        price = None
+        price_mid = None
+
     try:
         rating = float(rating) if rating == rating else None
     except Exception:
         rating = None
+
     try:
         star = int(star) if star == star else None
     except Exception:
@@ -390,6 +508,11 @@ def _row_to_hotel(row: pd.Series, match_reason: str = "") -> Dict[str, Any]:
     image_url = row.get("imageUrl") or ""
     detail_path = f"/properties/{hotel_id}" if hotel_id is not None else ""
 
+    price_text = _format_price_range_vnd(
+        int(price_min) if price_min == price_min else None,
+        int(price_max) if price_max == price_max else None,
+    )
+
     return {
         "id": hotel_id,
         "hotelname": row.get("hotelname") or "",
@@ -399,9 +522,15 @@ def _row_to_hotel(row: pd.Series, match_reason: str = "") -> Dict[str, Any]:
         "district_num": row.get("_district_num"),
         "rating": rating,
         "star": star,
-        "price_vnd": price,
-        "budget_vnd": price,  # backward-compat
-        "price_text": _format_price_vnd(price),
+
+        # Backward-compat: old field
+        "price_vnd": price_mid,
+        "budget_vnd": price_mid,
+
+        # New range fields
+        "price_min_vnd": int(price_min) if price_min == price_min else None,
+        "price_max_vnd": int(price_max) if price_max == price_max else None,
+        "price_text": price_text,
 
         "url_google": row.get("url_google") or "",
         "url": row.get("url_google") or "",  # alias
@@ -438,21 +567,28 @@ def _apply_constraints(df: pd.DataFrame, cons: Dict[str, Any]) -> pd.DataFrame:
     elif cons.get("district_names"):
         mask &= df["_district_norm"].isin(cons["district_names"])
 
-    # Price filter
+    # Price filter with range overlap
+    # - nếu user có min_price: cần price_max >= min_price
+    # - nếu user có max_price: cần price_min <= max_price
+    # - nếu user có cả 2: cần overlap giữa [hotel_min, hotel_max] và [user_min, user_max]
+    hotel_min = pd.to_numeric(df["_price_min_vnd"], errors="coerce")
+    hotel_max = pd.to_numeric(df["_price_max_vnd"], errors="coerce")
+
     if cons.get("min_price") is not None:
-        mask &= df["_price_vnd"].notna() & (df["_price_vnd"] >= cons["min_price"])
+        if cons.get("explicit_price") or cons.get("require_price"):
+            mask &= hotel_max.notna() & (hotel_max >= cons["min_price"])
+        else:
+            mask &= hotel_max.isna() | (hotel_max >= cons["min_price"])
+
     if cons.get("max_price") is not None:
         if cons.get("explicit_price") or cons.get("require_price"):
-            # user có điều kiện giá (nêu số tiền hoặc intent 'giá rẻ') => loại các khách sạn không có giá
-            mask &= df["_price_vnd"].notna() & (df["_price_vnd"] <= cons["max_price"])
+            mask &= hotel_min.notna() & (hotel_min <= cons["max_price"])
         else:
-            # không có ràng buộc giá rõ ràng => cho phép giá NA
-            mask &= (df["_price_vnd"].isna()) | (df["_price_vnd"] <= cons["max_price"])
+            mask &= hotel_min.isna() | (hotel_min <= cons["max_price"])
 
-    # Nếu user nói "giá rẻ" nhưng không tính được ngưỡng giá (thr None) => vẫn yêu cầu phải có giá
+    # Nếu user nói "giá rẻ" nhưng không có ngưỡng (thr None) => vẫn yêu cầu phải có giá
     if cons.get("require_price") and cons.get("min_price") is None and cons.get("max_price") is None:
-        mask &= df["_price_vnd"].notna()
-
+        mask &= hotel_min.notna() | hotel_max.notna()
 
     # Rating / star
     if cons.get("min_rating") is not None:
@@ -519,7 +655,6 @@ def _price_score(row: pd.Series, cons: Dict[str, Any], thr: Optional[PriceThresh
         lo = float(cons.get("min_price") or p)
         hi = float(cons.get("max_price") or p)
         mid = (lo + hi) / 2.0
-        # khoảng cách chuẩn hóa
         denom = max(hi - lo, 1.0)
         d = abs(p - mid) / denom
         return float(max(0.0, 1.0 - d))
@@ -546,14 +681,23 @@ def _explain(row: pd.Series, cons: Dict[str, Any], thr: Optional[PriceThresholds
     elif cons.get("district_names") and row.get("_district_norm") in cons["district_names"]:
         lines.append(f"Đúng khu vực: {str(row.get('district')).split(',')[0].strip()}.")
 
-    # Price
-    p = row.get("_price_vnd")
-    if p == p:
-        p = float(p)
-        if thr is not None and cons.get("price_intent") == "gia_re":
-            lines.append(f"Giá {p/1_000_000:.1f} triệu/đêm — thuộc nhóm giá rẻ trong dữ liệu.")
+    # Price (range aware)
+    pmin = row.get("_price_min_vnd")
+    pmax = row.get("_price_max_vnd")
+    try:
+        pmin = int(pmin) if pmin == pmin else None
+    except Exception:
+        pmin = None
+    try:
+        pmax = int(pmax) if pmax == pmax else None
+    except Exception:
+        pmax = None
+
+    if pmin is not None or pmax is not None:
+        if thr is not None and cons.get("price_intent") == "gia_re" and (row.get("_price_vnd") == row.get("_price_vnd")):
+            lines.append(f"Giá {_format_price_range_vnd(pmin, pmax)} — thuộc nhóm giá rẻ trong dữ liệu.")
         else:
-            lines.append(f"Giá {p/1_000_000:.1f} triệu/đêm.")
+            lines.append(f"Giá {_format_price_range_vnd(pmin, pmax)}.")
     else:
         if cons.get("price_intent") == "gia_re":
             lines.append("Chưa có giá, nhưng vẫn gợi ý thêm để bạn tham khảo (có thể hỏi lại giá khi đặt).")
@@ -569,6 +713,7 @@ def _explain(row: pd.Series, cons: Dict[str, Any], thr: Optional[PriceThresholds
         s = int(s) if s == s else None
     except Exception:
         s = None
+
     if r is not None and s is not None:
         lines.append(f"Chất lượng: {s} sao, rating {r:.1f}/5.")
     elif r is not None:
@@ -578,7 +723,7 @@ def _explain(row: pd.Series, cons: Dict[str, Any], thr: Optional[PriceThresholds
 
     # Retrieval evidence
     if vec_sim > 0.0 and lex_sim > 0.0:
-        lines.append("Khớp cả theo ngữ nghĩa (vector) lẫn từ khóa (BM25/TF-IDF).")
+        lines.append("Khớp cả theo ngữ nghĩa (vector) lẫn từ khóa (TF-IDF).")
     elif vec_sim > 0.0:
         lines.append("Khớp mạnh theo ngữ nghĩa (vector).")
     elif lex_sim > 0.0:
@@ -642,8 +787,9 @@ def hybrid_search_hotels(
         df_fb = df_cons.copy()
         df_fb["__rating"] = pd.to_numeric(df_fb["totalScore"], errors="coerce")
         df_fb["__star"] = pd.to_numeric(df_fb["_star_num"], errors="coerce")
-        df_fb["__price"] = df_fb["_price_vnd"].fillna(10**12)
-        df_fb = df_fb.sort_values(by=["__rating", "__star", "__price"], ascending=[False, False, True])
+        # sort by starting price (min) if available
+        df_fb["__price_min"] = pd.to_numeric(df_fb["_price_min_vnd"], errors="coerce").fillna(10**12)
+        df_fb = df_fb.sort_values(by=["__rating", "__star", "__price_min"], ascending=[False, False, True])
         out = []
         for _, row in df_fb.head(top_k).iterrows():
             h = _row_to_hotel(row, match_reason="Phù hợp tiêu chí lọc (fallback)")
@@ -682,9 +828,9 @@ def hybrid_search_hotels(
             break
 
     if sort_by == "Giá tăng dần":
-        out.sort(key=lambda h: (h.get("price_vnd", h.get("budget_vnd")) is None, h.get("price_vnd", h.get("budget_vnd")) or 0))
+        out.sort(key=lambda h: (h.get("price_min_vnd") is None, h.get("price_min_vnd") or 0))
     elif sort_by == "Giá giảm dần":
-        out.sort(key=lambda h: (h.get("price_vnd", h.get("budget_vnd")) is None, -(h.get("price_vnd", h.get("budget_vnd")) or 0)))
+        out.sort(key=lambda h: (h.get("price_max_vnd") is None, -(h.get("price_max_vnd") or 0)))
     elif sort_by == "Rating giảm dần":
         out.sort(key=lambda h: (h.get("rating") is None, -(h.get("rating") or 0), -(h.get("star") or 0)))
 
@@ -709,20 +855,22 @@ def build_answer_chain(llm: ChatGoogleGenerativeAI):
     2) Nếu JSON rỗng: xin lỗi ngắn gọn + nói rõ không tìm thấy theo tiêu chí hiện tại + gợi ý 2–3 cách nới tiêu chí.
     3) KHÔNG gợi ý khách sạn thiếu tên hoặc thiếu giá.
     - Tên hợp lệ: "hotelname" hoặc "name" không rỗng.
-    - Giá hợp lệ: "price_vnd" là số > 0. Nếu thiếu giá → loại khỏi gợi ý.
+    - Giá hợp lệ: có "price_min_vnd" hoặc "price_vnd" là số > 0 (hoặc "price_text" khác "chưa cập nhật giá").
+      Nếu thiếu giá → loại khỏi gợi ý.
     4) Không nhắc tới “JSON”, “tool”, “RAG” trong câu trả lời.
 
     CÁCH VIẾT (GIÚP VĂN PHONG PHONG PHÚ):
     - Mở đầu 1–2 câu: xác nhận nhu cầu (khu vực + tiêu chí giá).
     - Mỗi khách sạn: 5–6 dòng, diễn đạt tự nhiên.
     - “Vì sao phù hợp”: viết thành 2–3 gạch đầu dòng dựa trên "match_reason" hoặc "explain".
-    - Thêm 1 câu “gợi ý nhanh” phù hợp đối tượng: đi công tác / cặp đôi / đi khám bệnh / gần điểm tiện di chuyển… nhưng phải suy ra hợp lý từ JSON (ví dụ: quận, rating, star, mô tả), KHÔNG bịa địa danh.
+    - Thêm 1 câu “gợi ý nhanh” phù hợp đối tượng: đi công tác / cặp đôi / đi khám bệnh / gần điểm tiện di chuyển…
+      nhưng phải suy ra hợp lý từ JSON (ví dụ: quận, rating, star, mô tả), KHÔNG bịa địa danh.
 
     ĐỊNH DẠNG TRẢ LỜI:
     PHẦN 1: LỰA CHỌN TỐT NHẤT 🏆
     - 🏨 Tên:
     - 📍 Quận/khu vực:
-    - 💰 Giá: {{price_vnd}} VND/đêm
+    - 💰 Giá: {{price_text}}
     - ⭐ Hạng/đánh giá: (nếu có thì ghi; nếu không có thì bỏ)
     - ✨ Điểm nổi bật:
     • (ý 1 từ JSON)
@@ -732,7 +880,7 @@ def build_answer_chain(llm: ChatGoogleGenerativeAI):
 
     PHẦN 2: CÁC GỢI Ý ĐÁNG CÂN NHẮC 💡 (1–2 khách sạn tiếp theo)
     Mỗi khách sạn 2–3 dòng:
-    - 🏨 Tên — 💰 {{price_vnd}} VND/đêm
+    - 🏨 Tên — 💰 {{price_text}}
     ✨ 1 câu mô tả điểm mạnh dựa trên JSON
 
     KẾT:
@@ -742,9 +890,6 @@ def build_answer_chain(llm: ChatGoogleGenerativeAI):
     """
     prompt = ChatPromptTemplate.from_template(template)
     return prompt | llm | StrOutputParser()
-
-
-
 
 
 # =========================
