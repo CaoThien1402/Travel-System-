@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { MapPin, Star, DollarSign, Filter, Search, Hotel as HotelIcon, User, LogOut } from 'lucide-react';
+import { Menu, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -157,6 +158,8 @@ const HotelSearch = () => {
     setMapHotels(getFeaturedHotelsForMap(filtered, 100));
   }, [searchQuery, priceRange, minStars, hotels]);
 
+  const [showMobileList, setShowMobileList] = useState(false);
+
   return (
     <div className="h-screen flex flex-col">
       {/* Header/Navbar */}
@@ -285,101 +288,177 @@ const HotelSearch = () => {
           </div>
         </div>
       </div>
+      
 
-      {/* Main Content: Map + Hotel List */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Hotel List (Left Side - 50%) */}
-        <div className="w-1/2 border-r bg-gray-50">
-          <ScrollArea className="h-full">
-            <div className="p-4 space-y-3">
-              <div className="text-sm text-gray-600 mb-4">
-                Tìm thấy {filteredHotels.length} khách sạn
-              </div>
+      
 
+      <div className="relative flex flex-row h-screen w-screen overflow-hidden bg-white">
+      
+      {/* ------------------------------------------------------ */}
+      {/* 1. NÚT TOGGLE (Mobile Only)                            */}
+      {/* ------------------------------------------------------ */}
+      <button 
+        onClick={() => setShowMobileList(!showMobileList)}
+        className="lg:hidden absolute top-4 left-4 z-[9999] p-3 bg-white text-gray-700 rounded-full shadow-xl border border-gray-200 hover:bg-gray-50 active:scale-95 transition-all"
+        aria-label="Toggle Hotel List"
+      >
+        {showMobileList ? <X size={24} /> : <Menu size={24} />}
+      </button>
+
+      {/* ------------------------------------------------------ */}
+      {/* 2. OVERLAY (Lớp nền đen mờ khi mở menu trên mobile)    */}
+      {/* ------------------------------------------------------ */}
+      {showMobileList && (
+        <div 
+          className="lg:hidden fixed inset-0 z-[9990] bg-black/50 backdrop-blur-sm"
+          onClick={() => setShowMobileList(false)}
+        />
+      )}
+
+      {/* ------------------------------------------------------ */}
+      {/* 3. HOTEL LIST CONTAINER (Sidebar)                      */}
+      {/* ------------------------------------------------------ */}
+      <div className={`
+        absolute inset-y-0 left-0 z-[9995] w-[85%] sm:w-[400px] bg-white shadow-2xl transform transition-transform duration-300 ease-in-out
+        ${showMobileList ? 'translate-x-0' : '-translate-x-full'}
+        lg:relative lg:translate-x-0 lg:w-1/2 lg:shadow-none lg:border-r lg:bg-gray-50 lg:block lg:z-auto
+      `}>
+        
+        <div className="flex flex-col h-full">
+          {/* Header text: "Tìm thấy..." */}
+          {/* Thêm pt-16 trên mobile để tránh bị nút toggle che mất chữ */}
+          <div className="px-4 pb-2 pt-20 lg:pt-4 text-sm text-gray-600">
+            Tìm thấy <span className="font-bold">{filteredHotels.length}</span> khách sạn
+          </div>
+
+          {/* Vùng cuộn danh sách */}
+          <ScrollArea className="flex-1 w-full h-full">
+            {/* Wrapper thêm padding để list không bị dính sát lề */}
+            <div className="px-4 pb-4 w-full"> 
+              
               {isLoading ? (
-                <div className="text-center py-12">Đang tải...</div>
+                <div className="flex text-center py-12 justify-center">Đang tải...</div>
               ) : filteredHotels.length === 0 ? (
-                <div className="text-center py-12 text-gray-500">
+                <div className="flex text-center py-12 text-gray-500 justify-center">
                   Không tìm thấy khách sạn phù hợp
                 </div>
               ) : (
-                filteredHotels.map((hotel) => (
-                  <div
-                    key={hotel.id}
-                    className={`bg-white rounded-lg p-4 cursor-pointer transition-all hover:shadow-lg border-2 ${
-                      selectedHotel?.id === hotel.id
-                        ? 'border-primary shadow-lg'
-                        : 'border-transparent'
-                    }`}
-                    onClick={() => navigate(`/properties/${hotel.id}`)}
-                  >
-                    <div className="flex gap-4">
-                      {/* Hotel Image */}
-                      <div className="w-32 h-32 flex-shrink-0 rounded-lg overflow-hidden bg-gray-200 relative">
-                        <HotelImage src={hotel.imageUrl} alt={hotel.hotelname} />
-                      </div>
+                /* BẢNG HIỂN THỊ ITEM */
+                /* border-spacing-y-3 tạo khoảng cách giữa các thẻ item */
+                <div className="w-full px-4"> {/* Container chính bọc table, có padding 2 bên */}
+  <table className="w-full table-fixed"> {/* table-fixed: Bắt buộc table không được tràn quá chiều rộng cha */}
+    <tbody className="w-full">
+      {filteredHotels.map((hotel) => (
+        <tr key={hotel.id} className="w-full">
+          {/* Thay vì dùng border-spacing ở table cha, 
+            ta dùng padding-bottom (pb-4) ở thẻ td để tạo khoảng cách giữa các card 
+          */}
+          <td className="w-full p-0 pb-4 border-none block sm:table-cell"> 
+            
+            {/* --- CARD CHÍNH BẮT ĐẦU TỪ ĐÂY --- */}
+            {/* Chuyển toàn bộ class style (border, shadow, rounded) vào DIV này */}
+            <div 
+              className={`
+                w-full bg-white rounded-lg p-4 cursor-pointer transition-all hover:shadow-lg border-2
+                ${selectedHotel?.id === hotel.id ? 'border-primary shadow-lg' : 'border-transparent'}
+              `}
+              onClick={() => {
+                navigate(`/properties/${hotel.id}`);
+                setShowMobileList(false);
+              }}
+            >
+              <div className="flex w-full gap-4">
+                
+                {/* Ảnh khách sạn (Giữ nguyên size cố định để không bị méo layout) */}
+                <div className="w-24 h-24 sm:w-32 sm:h-32 flex-shrink-0 rounded-lg overflow-hidden bg-gray-200 relative">
+                  <HotelImage src={hotel.imageUrl} alt={hotel.hotelname} />
+                </div>
 
-                      {/* Hotel Info */}
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold text-lg mb-1 truncate">
-                          {hotel.hotelname}
-                        </h3>
-                        <div className="flex items-center gap-2 mb-2">
-                          <div className="text-yellow-500">
-                            {'⭐'.repeat(Math.floor(hotel.star))}
-                          </div>
-                          {hotel.reviewsCount && (
-                            <span className="text-xs text-gray-500">
-                              ({hotel.reviewsCount} đánh giá)
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-sm text-gray-600 mb-3 line-clamp-2">
-                          <MapPin className="w-4 h-4 inline mr-1" />
-                          {hotel.district}
-                        </p>
-                        <div className="flex items-end justify-between">
-                          <div>
-                            <div className="text-xs text-gray-500">Giá mỗi đêm từ</div>
-                            <div className="text-2xl font-bold text-primary">
-                              {hotel.price.toLocaleString('vi-VN')} ₫
-                            </div>
-                          </div>
-                          <Button size="sm" className="bg-primary hover:bg-primary/90">
-                            Xem chi tiết
-                          </Button>
-                        </div>
+                {/* Thông tin khách sạn (flex-1 để chiếm phần còn lại nhưng không tràn) */}
+                <div className="flex-1 min-w-0 flex flex-col justify-between">
+                  <div>
+                    <h3 className="font-semibold text-lg mb-1 truncate">
+                      {hotel.hotelname}
+                    </h3>
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="text-yellow-500 text-xs sm:text-sm">
+                        {'⭐'.repeat(Math.floor(hotel.star))}
+                      </div>
+                      {hotel.reviewsCount && (
+                        <span className="text-xs text-gray-500 truncate">
+                          ({hotel.reviewsCount} đánh giá)
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-gray-600 mb-2 line-clamp-1">
+                      <MapPin className="w-3 h-3 inline mr-1" />
+                      {hotel.district}
+                    </p>
+                  </div>
+                  
+                  {/* Giá và Nút */}
+                  <div className="flex items-end justify-between mt-1">
+                    <div>
+                      <div className="text-[10px] sm:text-xs text-gray-500">Giá từ</div>
+                      <div className="text-lg sm:text-2xl font-bold text-primary">
+                        {hotel.price.toLocaleString('vi-VN')} ₫
                       </div>
                     </div>
+                    <Button size="sm" className="bg-primary hover:bg-primary/90 shrink-0 ml-2">
+                      Xem
+                    </Button>
                   </div>
-                ))
+                </div>
+
+              </div>
+            </div>
+            {/* --- KẾT THÚC CARD --- */}
+
+          </td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+</div>
               )}
             </div>
           </ScrollArea>
         </div>
+      </div>
 
-        {/* Map (Right Side - 50%) */}
-        <div className="w-1/2 relative p-4">
-          <div className="h-full rounded-xl overflow-hidden shadow-lg">
-            {mapHotels.length < filteredHotels.length && (
-              <div className="absolute top-6 left-6 right-6 z-10 bg-white/95 backdrop-blur-sm rounded-lg shadow-md p-3 text-sm">
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-700">
-                    Hiển thị <strong>{mapHotels.length}</strong> khách sạn tiêu biểu trên {filteredHotels.length} khách sạn
-                  </span>
-                  <span className="text-xs text-gray-500">
-                    (Đánh giá cao nhất)
-                  </span>
-                </div>
+      {/* ------------------------------------------------------ */}
+      {/* 4. MAP AREA (Right Side)                               */}
+      {/* ------------------------------------------------------ */}
+      <div className="w-full h-full lg:w-1/2 relative bg-gray-100">
+        <div className="h-full w-full relative">
+          
+          {/* Thông báo số lượng (Chỉ hiện trên Desktop để đỡ rối Mobile) */}
+          {mapHotels.length < filteredHotels.length && (
+            <div className="hidden lg:block absolute top-6 left-6 right-6 z-10 bg-white/95 backdrop-blur-sm rounded-lg shadow-md p-3 text-sm max-w-md mx-auto pointer-events-none">
+              <div className="flex items-center justify-between">
+                <span className="text-gray-700">
+                  Hiển thị <strong>{mapHotels.length}</strong> khách sạn tiêu biểu
+                </span>
+                <span className="text-xs text-gray-500 ml-2">(Đánh giá cao)</span>
               </div>
-            )}
-            <HotelMap
-              hotels={mapHotels}
-              onMarkerClick={setSelectedHotel}
-            />
-          </div>
+            </div>
+          )}
+          
+          <HotelMap
+            hotels={mapHotels}
+            onMarkerClick={(hotel) => {
+              setSelectedHotel(hotel);
+              setShowMobileList(true); // Tự động mở list khi click vào marker
+            }}
+          />
         </div>
       </div>
+      
+    </div>
+
+
+
+      
     </div>
   );
 };
