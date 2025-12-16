@@ -29,11 +29,13 @@ const PropertyCard = ({
   const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
-    setImgSrc(image || "");
-    setIsLoaded(false);
-    setRetryCount(0);
-    setHasError(false);
-  }, [image]);
+    if (image !== imgSrc.split("?")[0]) {
+      setImgSrc(image || "");
+      setRetryCount(0);
+      setHasError(false);
+      // Không reset isLoaded để tránh nhấp nháy khi ảnh đã được cache
+    }
+  }, [image, imgSrc]);
 
   const amenityIcons: { [key: string]: LucideIcon } = {
     wifi: Wifi,
@@ -43,17 +45,16 @@ const PropertyCard = ({
 
   return (
     <div className="group bg-card rounded-xl overflow-hidden shadow-soft hover:shadow-large transition-all duration-300 cursor-pointer">
-      <div className="relative overflow-hidden aspect-[4/3]">
-        {!isLoaded && !hasError && imgSrc && (
-          <div className="absolute inset-0 bg-muted animate-pulse" aria-hidden="true" />
-        )}
+      <div className="relative overflow-hidden aspect-[4/3] bg-muted">
         {imgSrc && !hasError ? (
           <img
             src={imgSrc}
             alt={name}
             loading="lazy"
             decoding="async"
-            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+            className={`w-full h-full object-cover group-hover:scale-110 transition-all duration-500 ${
+              isLoaded ? "opacity-100" : "opacity-0"
+            }`}
             onLoad={() => setIsLoaded(true)}
             onError={() => {
               if (retryCount < 2 && image) {
