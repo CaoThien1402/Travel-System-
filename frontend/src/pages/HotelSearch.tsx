@@ -80,15 +80,21 @@ const HotelSearch = () => {
   const [priceRange, setPriceRange] = useState([0, 10000000]);
   const [minStars, setMinStars] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
 
   const handleSignOut = async () => {
+    if (isLoggingOut) return;
+    
+    setIsLoggingOut(true);
     try {
       await signOut();
-      navigate('/');
+      navigate('/', { replace: true });
     } catch (error) {
       console.error('Error signing out:', error);
+    } finally {
+      setIsLoggingOut(false);
     }
   };
 
@@ -178,9 +184,9 @@ const HotelSearch = () => {
                 Trang chủ
               </Link>
               {user ? (
-                <DropdownMenu>
+                <DropdownMenu modal={false}>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="sm">
+                    <Button variant="ghost" size="sm" disabled={isLoggingOut}>
                       <User className="w-4 h-4 mr-2" />
                       {user.email}
                     </Button>
@@ -201,9 +207,13 @@ const HotelSearch = () => {
                       Đặt phòng của tôi
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={handleSignOut}>
-                      <LogOut className="w-4 h-4 mr-2" />
-                      Đăng xuất
+                    <DropdownMenuItem 
+                      onClick={handleSignOut}
+                      disabled={isLoggingOut}
+                      className="disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <LogOut className={`w-4 h-4 mr-2 ${isLoggingOut ? 'animate-spin' : ''}`} />
+                      {isLoggingOut ? 'Đang đăng xuất...' : 'Đăng xuất'}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
