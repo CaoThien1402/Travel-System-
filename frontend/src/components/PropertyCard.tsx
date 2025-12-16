@@ -52,6 +52,7 @@ const PropertyCard = ({
             alt={name}
             loading="lazy"
             decoding="async"
+            referrerPolicy="no-referrer"
             className={`w-full h-full object-cover group-hover:scale-110 transition-all duration-500 ${
               isLoaded ? "opacity-100" : "opacity-0"
             }`}
@@ -62,7 +63,7 @@ const PropertyCard = ({
                 setTimeout(() => {
                   setRetryCount((c) => c + 1);
                   setImgSrc(`${image}?retry=${Date.now()}`);
-                }, 1200);
+                }, 500);
               } else {
                 setHasError(true);
                 setIsLoaded(true);

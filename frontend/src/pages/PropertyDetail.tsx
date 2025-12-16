@@ -98,6 +98,7 @@ export default function PropertyDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [hotel, setHotel] = useState<Hotel | null>(null);
+  const [imageError, setImageError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [expandedReviews, setExpandedReviews] = useState<Record<number, boolean>>({});
@@ -222,33 +223,21 @@ export default function PropertyDetail() {
         <div className="grid gap-6 lg:grid-cols-[2fr,1fr]">
           <Card className="overflow-hidden">
             <div className="relative h-[360px] bg-muted">
-              {imageUrl ? (
-                <>
-                  <img
-                    src={imageUrl}
-                    alt={hotelname}
-                    className="h-full w-full object-cover"
-                    onError={(e) => {
-                      // Hide broken image and show fallback
-                      e.currentTarget.classList.add('hidden');
-                      const fallback = e.currentTarget.nextElementSibling;
-                      if (fallback) fallback.classList.remove('hidden');
-                    }}
-                  />
-                  <div className="hidden h-full w-full">
-                    <div className="flex h-full w-full items-center justify-center text-muted-foreground">
-                      <div className="text-center">
-                        <HotelIcon className="w-16 h-16 mx-auto mb-2 opacity-50" />
-                        <p>Không thể tải hình ảnh</p>
-                      </div>
-                    </div>
-                  </div>
-                </>
+              {imageUrl && !imageError ? (
+                <img
+                  src={imageUrl}
+                  alt={hotelname}
+                  className="h-full w-full object-cover"
+                  loading="lazy"
+                  decoding="async"
+                  referrerPolicy="no-referrer"
+                  onError={() => setImageError(true)}
+                />
               ) : (
                 <div className="flex h-full w-full items-center justify-center text-muted-foreground">
                   <div className="text-center">
                     <HotelIcon className="w-16 h-16 mx-auto mb-2 opacity-50" />
-                    <p>Không có hình ảnh</p>
+                    <p>{imageUrl ? "Không thể tải hình ảnh" : "Không có hình ảnh"}</p>
                   </div>
                 </div>
               )}

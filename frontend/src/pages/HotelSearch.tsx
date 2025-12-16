@@ -31,20 +31,42 @@ interface Hotel {
   totalScore?: number;
 }
 
+// Fallback image placeholder (base64 encoded simple hotel icon placeholder)
+const FALLBACK_IMAGE = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2Z'/%3E%3Cpath d='m9 16 .348-.24c1.465-1.013 3.84-1.013 5.304 0L15 16'/%3E%3Cpath d='M8 7h.01'/%3E%3Cpath d='M16 7h.01'/%3E%3Cpath d='M12 7h.01'/%3E%3Cpath d='M12 11h.01'/%3E%3Cpath d='M16 11h.01'/%3E%3Cpath d='M8 11h.01'/%3E%3C/svg%3E";
+
 // Component để hiển thị ảnh với fallback
 const HotelImage = ({ src, alt }: { src?: string; alt: string }) => {
+  const [imgSrc, setImgSrc] = useState(src || '');
   const [hasError, setHasError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [retryCount, setRetryCount] = useState(0);
 
   // Reset state when src changes
   useEffect(() => {
-    setHasError(false);
-    setIsLoading(true);
-  }, [src]);
+    if (src !== imgSrc.split("?")[0]) {
+      setImgSrc(src || '');
+      setHasError(false);
+      setIsLoading(true);
+      setRetryCount(0);
+    }
+  }, [src, imgSrc]);
+
+  const handleError = () => {
+    if (retryCount < 2 && imgSrc) {
+      // Retry with cache buster after a small delay
+      setTimeout(() => {
+        setRetryCount(c => c + 1);
+        setImgSrc(`${src}?retry=${Date.now()}`);
+      }, 500);
+    } else {
+      setHasError(true);
+      setIsLoading(false);
+    }
+  };
 
   if (!src || hasError) {
     return (
-      <div className="w-full h-full flex items-center justify-center text-gray-400 bg-gray-100">
+      <div className="w-full h-full flex items-center justify-center text-gray-400 bg-gradient-to-br from-gray-100 to-gray-200">
         <HotelIcon className="w-8 h-8" />
       </div>
     );
@@ -58,14 +80,14 @@ const HotelImage = ({ src, alt }: { src?: string; alt: string }) => {
         </div>
       )}
       <img
-        src={src}
+        src={imgSrc}
         alt={alt}
-        className={`w-full h-full object-cover ${isLoading ? 'opacity-0' : 'opacity-100'}`}
+        loading="lazy"
+        decoding="async"
+        referrerPolicy="no-referrer"
+        className={`w-full h-full object-cover transition-opacity duration-300 ${isLoading ? 'opacity-0' : 'opacity-100'}`}
         onLoad={() => setIsLoading(false)}
-        onError={() => {
-          setHasError(true);
-          setIsLoading(false);
-        }}
+        onError={handleError}
       />
     </>
   );
@@ -355,10 +377,8 @@ const HotelSearch = () => {
               ) : (
                 /* BẢNG HIỂN THỊ ITEM */
                 /* border-spacing-y-3 tạo khoảng cách giữa các thẻ item */
-                <div className="w-full px-4"> {/* Container chính bọc table, có padding 2 bên */}
-  <table className="w-full table-fixed"> {/* table-fixed: Bắt buộc table không được tràn quá chiều rộng cha */}
-    <tbody className="w-full">
-      {filteredHotels.map((hotel) => (
+                <div className="w-full px-4">
+  <table className="w-full table-fixed"><tbody className="w-full">{filteredHotels.map((hotel) => (
         <tr key={hotel.id} className="w-full">
           {/* Thay vì dùng border-spacing ở table cha, 
             ta dùng padding-bottom (pb-4) ở thẻ td để tạo khoảng cách giữa các card 
@@ -426,9 +446,7 @@ const HotelSearch = () => {
 
           </td>
         </tr>
-      ))}
-    </tbody>
-  </table>
+      ))}</tbody></table>
 </div>
               )}
             </div>
