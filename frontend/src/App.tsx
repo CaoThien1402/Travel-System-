@@ -16,6 +16,8 @@ import HotelSearch from "@/pages/HotelSearch";
 import PropertyDetail from "@/pages/PropertyDetail";
 import { Dashboard } from "@/pages/Dashboard";
 import Profile from "@/pages/Profile";
+import Wishlist from "@/pages/Wishlist";
+import About from "@/pages/About";
 import { AuthCallback } from "@/pages/AuthCallback";
 import NotFound from "@/pages/NotFound";
 
@@ -61,6 +63,7 @@ function App() {
               <Route path="/register" element={<Register />} />
               <Route path="/search" element={<HotelSearch />} />
               <Route path="/properties/:id" element={<PropertyDetail />} />
+              <Route path="/about" element={<About />} />
               <Route path="/auth/callback" element={<AuthCallback />} />
 
               {/* ================= PROTECTED ROUTES ================= */}
@@ -87,6 +90,15 @@ function App() {
                 element={
                   <ProtectedRoute>
                     <BookingsPage />
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/wishlist"
+                element={
+                  <ProtectedRoute>
+                    <Wishlist />
                   </ProtectedRoute>
                 }
               />

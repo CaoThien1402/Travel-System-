@@ -7,6 +7,7 @@ import authRoutes from './routes/auth';
 import propertiesRoutes from './routes/properties';
 import chatRoutes from './routes/chat';
 import semanticSearchRoutes from './routes/semanticSearch';
+import wishlistRoutes from './routes/wishlist';
 
 
 dotenv.config();
@@ -43,6 +44,10 @@ app.use('/api', chatRoutes);
 // ĐĂNG KÝ ROUTE SEMANTIC SEARCH (Search Bar - gọi Python script trực tiếp)
 // Đường dẫn: /api/semantic-search
 app.use('/api', semanticSearchRoutes);
+
+// ĐĂNG KÝ ROUTE WISHLIST (Danh sách yêu thích)
+// Đường dẫn: /api/wishlist
+app.use('/api/wishlist', wishlistRoutes);
 
 // --- Error Handling ---
 app.use((req, res) => {

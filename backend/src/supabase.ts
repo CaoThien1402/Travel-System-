@@ -35,3 +35,15 @@ export interface AuthResponse {
   session?: any;
   error?: string;
 }
+
+export interface Wishlist {
+  id: string;
+  user_id: string;
+  hotel_id: string;
+  hotel_name?: string;
+  hotel_image?: string;
+  hotel_price?: number;
+  hotel_district?: string;
+  hotel_star?: number;
+  created_at: string;
+}

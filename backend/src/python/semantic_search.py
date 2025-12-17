@@ -242,6 +242,28 @@ def search(query, top_k=20, min_price=None, max_price=None, min_star=None, distr
     else:
         df['star_int'] = 0
     
+    # Parse price column - handle ranges like "300000 - 750000"
+    def parse_price(price_val):
+        if pd.isna(price_val):
+            return 0
+        try:
+            price_str = str(price_val).strip()
+            if '-' in price_str:
+                # Price range: take average
+                parts = price_str.split('-')
+                min_p = float(parts[0].strip())
+                max_p = float(parts[1].strip())
+                return (min_p + max_p) / 2
+            else:
+                return float(price_str)
+        except (ValueError, AttributeError):
+            return 0
+    
+    if 'price' in df.columns:
+        df['price_numeric'] = df['price'].apply(parse_price)
+    else:
+        df['price_numeric'] = 0
+    
     # Load model
     tokenizer, model, device = load_model()
     
@@ -249,12 +271,10 @@ def search(query, top_k=20, min_price=None, max_price=None, min_star=None, distr
     filter_mask = pd.Series([True] * len(df))
     
     if min_price is not None:
-        price_col = df.get('price', pd.Series([0] * len(df)))
-        filter_mask &= (price_col >= min_price)
+        filter_mask &= (df['price_numeric'] >= min_price)
     
     if max_price is not None:
-        price_col = df.get('price', pd.Series([float('inf')] * len(df)))
-        filter_mask &= (price_col <= max_price)
+        filter_mask &= (df['price_numeric'] <= max_price)
     
     if min_star is not None and min_star > 0:
         filter_mask &= (df['star_int'] >= min_star)
@@ -308,12 +328,28 @@ def search(query, top_k=20, min_price=None, max_price=None, min_star=None, distr
                 if match:
                     star_int = int(match.group(1))
         
+        # Parse price - handle price ranges like "300000 - 750000"
+        price_value = 0
+        if pd.notna(row.get('price')):
+            try:
+                price_str = str(row.get('price', 0)).strip()
+                if '-' in price_str:
+                    # Price range: take average
+                    parts = price_str.split('-')
+                    min_price = float(parts[0].strip())
+                    max_price = float(parts[1].strip())
+                    price_value = (min_price + max_price) / 2
+                else:
+                    price_value = float(price_str)
+            except (ValueError, AttributeError):
+                price_value = 0
+        
         hotel = {
             "id": int(orig_idx) + 1,
             "hotelname": safe_str(row.get('hotelname', '')),
             "address": safe_str(row.get('address', '')),
             "district": safe_str(row.get('district', '')),
-            "price": float(row.get('price', 0)) if pd.notna(row.get('price')) else 0,
+            "price": price_value,
             "star": star_int,
             "lat": float(row.get('lat', 0)) if pd.notna(row.get('lat')) else 0,
             "lon": float(row.get('lon', 0)) if pd.notna(row.get('lon')) else 0,

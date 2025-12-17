@@ -39,7 +39,6 @@ env/
 ENV/
 
 # Vector embeddings and data files
-*.npy
 vectorstores/
 
 # Coverage

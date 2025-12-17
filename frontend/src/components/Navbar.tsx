@@ -1,4 +1,4 @@
-import { Hotel, Menu, User, LogOut, LayoutDashboard } from "lucide-react";
+import { Hotel, Menu, User, LogOut, LayoutDashboard, Heart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -51,29 +51,32 @@ const Navbar = () => {
   };
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-sm border-b border-border shadow-soft">
-      <div className="container mx-auto px-4">
-        <div className="flex items-center justify-between h-16">
+    <nav className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-r from-sky-400 via-blue-500 to-cyan-400 backdrop-blur-md shadow-2xl border-b-4 border-white/20">
+      <div className="container mx-auto px-6">
+        <div className="flex items-center h-20 relative">
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-2">
-            <div className="w-10 h-10 rounded-lg bg-gradient-hero flex items-center justify-center">
-              <Hotel className="w-6 h-6 text-primary-foreground" />
+          <Link to="/" className="flex items-center gap-3 group">
+            <div className="w-12 h-12 rounded-xl bg-white/90 flex items-center justify-center shadow-md group-hover:shadow-xl transition-all duration-300 group-hover:scale-105">
+              <Hotel className="w-7 h-7 text-sky-600" />
             </div>
-            <span className="text-xl font-bold text-foreground">3T2M1Stay</span>
+            <span className="text-2xl font-bold text-white drop-shadow-md">3T2M1Stay</span>
           </Link>
 
-          {/* Desktop Menu */}
-          <div className="hidden md:flex items-center gap-6">
-            <Link to="/" className="text-foreground hover:text-primary transition-colors font-medium">
+          {/* Desktop Menu - Centered */}
+          <div className="hidden md:flex items-center gap-4 absolute left-1/2 -translate-x-1/2">
+            <Link to="/" className="px-5 py-2.5 rounded-lg text-white font-semibold text-base border border-white/25 hover:border-white/50 hover:bg-white/10 transition-all duration-200 backdrop-blur-sm shadow-md hover:shadow-lg hover:scale-105">
               Trang chủ
             </Link>
-            <Link to="/search" className="text-muted-foreground hover:text-primary transition-colors">
+            <Link to="/search" className="px-5 py-2.5 rounded-lg text-white font-semibold text-base border border-white/25 hover:border-white/50 hover:bg-white/10 transition-all duration-200 backdrop-blur-sm shadow-md hover:shadow-lg hover:scale-105">
               Tìm khách sạn
+            </Link>
+            <Link to="/about" className="px-5 py-2.5 rounded-lg text-white font-semibold text-base border border-white/25 hover:border-white/50 hover:bg-white/10 transition-all duration-200 backdrop-blur-sm shadow-md hover:shadow-lg hover:scale-105">
+              Về chúng tôi
             </Link>
           </div>
 
           {/* Desktop Auth */}
-          <div className="hidden md:flex items-center gap-3">
+          <div className="hidden md:flex items-center gap-3 ml-auto">
             {loading ? (
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-full bg-gray-200 animate-pulse"></div>
@@ -121,18 +124,19 @@ const Navbar = () => {
                         <Hotel className="w-4 h-4 mr-2" />
                         Đặt phòng của tôi
                       </DropdownMenuItem>
-                      {/* Thêm items mẫu để thấy scroll */}
-                      <DropdownMenuItem className="cursor-pointer focus:bg-accent">
-                        <Hotel className="w-4 h-4 mr-2" />
-                        Yêu thích
+                      <DropdownMenuItem 
+                        onClick={() => handleNavigation('/wishlist')} 
+                        className="cursor-pointer focus:bg-accent"
+                      >
+                        <Heart className="w-4 h-4 mr-2" />
+                        Khách sạn yêu thích
                       </DropdownMenuItem>
-                      <DropdownMenuItem className="cursor-pointer focus:bg-accent">
+                      <DropdownMenuItem 
+                        onClick={() => handleNavigation('/search')} 
+                        className="cursor-pointer focus:bg-accent"
+                      >
                         <Hotel className="w-4 h-4 mr-2" />
                         Lịch sử tìm kiếm
-                      </DropdownMenuItem>
-                      <DropdownMenuItem className="cursor-pointer focus:bg-accent">
-                        <Hotel className="w-4 h-4 mr-2" />
-                        Cài đặt
                       </DropdownMenuItem>
                     </div>
                   </ScrollArea>
@@ -150,13 +154,13 @@ const Navbar = () => {
             ) : (
               <>
                 <Link to="/login">
-                  <Button variant="ghost" size="sm">
+                  <Button variant="ghost" size="sm" className="font-semibold text-white hover:bg-white/20 hover:text-white transition-all duration-200 border border-white/30">
                     <User className="w-4 h-4 mr-2" />
                     Đăng nhập
                   </Button>
                 </Link>
                 <Link to="/register">
-                  <Button size="sm" className="bg-primary hover:bg-primary-hover transition-colors">
+                  <Button size="sm" className="bg-white text-sky-600 hover:bg-white/90 font-semibold shadow-md hover:shadow-lg transition-all duration-200">
                     Đăng ký
                   </Button>
                 </Link>
@@ -194,6 +198,13 @@ const Navbar = () => {
                 onClick={() => setIsMenuOpen(false)}
               >
                 Tìm khách sạn
+              </Link>
+              <Link 
+                to="/about" 
+                className="text-muted-foreground hover:text-primary transition-colors py-2"
+                onClick={() => setIsMenuOpen(false)}
+              >
+                Về chúng tôi
               </Link>
               
               <div className="flex flex-col gap-2 mt-3 pt-3 border-t border-border">
@@ -244,6 +255,30 @@ const Navbar = () => {
                         >
                           <Hotel className="w-4 h-4 mr-2" />
                           Đặt phòng của tôi
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="w-full justify-start hover:bg-accent"
+                          onClick={() => {
+                            navigate('/wishlist');
+                            setIsMenuOpen(false);
+                          }}
+                        >
+                          <Heart className="w-4 h-4 mr-2" />
+                          Khách sạn yêu thích
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="w-full justify-start hover:bg-accent"
+                          onClick={() => {
+                            navigate('/search');
+                            setIsMenuOpen(false);
+                          }}
+                        >
+                          <Hotel className="w-4 h-4 mr-2" />
+                          Lịch sử tìm kiếm
                         </Button>
                       </div>
                     </ScrollArea>

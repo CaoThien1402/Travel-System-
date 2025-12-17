@@ -1,176 +1,166 @@
-import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { Hotel, Heart, Calendar, User, TrendingUp, MapPin, Star } from 'lucide-react';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import Navbar from '@/components/Navbar';
 
-export const Dashboard: React.FC = () => {
+export const Dashboard = () => {
   const navigate = useNavigate();
-  const { user, profile, signOut } = useAuth();
+  const { user, profile } = useAuth();
 
-  const handleLogout = async () => {
-    try {
-      await signOut();
-      navigate('/login');
-    } catch (error) {
-      console.error('Logout error:', error);
-    }
-  };
+  const stats = [
+    { 
+      label: 'Đặt phòng', 
+      value: '0', 
+      icon: Calendar, 
+      color: 'from-blue-500 to-blue-600',
+      bgColor: 'bg-blue-50',
+      iconColor: 'text-blue-600'
+    },
+    { 
+      label: 'Yêu thích', 
+      value: '0', 
+      icon: Heart, 
+      color: 'from-pink-500 to-pink-600',
+      bgColor: 'bg-pink-50',
+      iconColor: 'text-pink-600'
+    },
+    { 
+      label: 'Đã xem', 
+      value: '0', 
+      icon: MapPin, 
+      color: 'from-purple-500 to-purple-600',
+      bgColor: 'bg-purple-50',
+      iconColor: 'text-purple-600'
+    },
+    { 
+      label: 'Điểm tích lũy', 
+      value: '0', 
+      icon: Star, 
+      color: 'from-yellow-500 to-yellow-600',
+      bgColor: 'bg-yellow-50',
+      iconColor: 'text-yellow-600'
+    },
+  ];
+
+  const quickActions = [
+    { label: 'Tìm khách sạn', path: '/search', icon: Hotel, color: 'bg-gradient-to-r from-blue-500 to-blue-600' },
+    { label: 'Yêu thích', path: '/wishlist', icon: Heart, color: 'bg-gradient-to-r from-pink-500 to-pink-600' },
+    { label: 'Đặt phòng', path: '/bookings', icon: Calendar, color: 'bg-gradient-to-r from-purple-500 to-purple-600' },
+    { label: 'Hồ sơ', path: '/profile', icon: User, color: 'bg-gradient-to-r from-green-500 to-green-600' },
+  ];
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      {/* Header */}
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex justify-between items-center">
-            <h1 className="text-3xl font-bold text-gray-900">
-              Dashboard
-            </h1>
-            <button
-              onClick={handleLogout}
-              className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition"
-            >
-              Đăng xuất
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Welcome Card */}
-        <div className="bg-white overflow-hidden shadow rounded-lg mb-6">
-          <div className="px-4 py-5 sm:p-6">
-            <h2 className="text-2xl font-semibold text-gray-900 mb-4">
-              Chào mừng, {profile?.full_name || user?.email}! 🎉
-            </h2>
-            <p className="text-gray-600">
-              Đây là trang dashboard của bạn. Bạn có thể quản lý đặt phòng, xem lịch sử và cập nhật thông tin cá nhân.
-            </p>
-          </div>
-        </div>
-
-        {/* User Info Card */}
-        <div className="bg-white overflow-hidden shadow rounded-lg mb-6">
-          <div className="px-4 py-5 sm:p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">
-              Thông tin tài khoản
-            </h3>
-            <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <dt className="text-sm font-medium text-gray-500">Họ tên</dt>
-                <dd className="mt-1 text-sm text-gray-900">{profile?.full_name || 'Chưa cập nhật'}</dd>
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+      <Navbar />
+      
+      <main className="pt-20 pb-12">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+          {/* Welcome Section */}
+          <div className="mb-8">
+            <div className="bg-gradient-to-r from-primary to-purple-600 rounded-2xl p-8 text-white shadow-xl">
+              <div className="flex items-center justify-between flex-wrap gap-4">
+                <div>
+                  <h1 className="text-3xl md:text-4xl font-bold mb-2">
+                    Xin chào, {profile?.full_name || user?.email?.split('@')[0] || 'Bạn'}! 👋
+                  </h1>
+                  <p className="text-blue-100 text-lg">
+                    Chúc bạn có một ngày tuyệt vời với 3T2M1Stay
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-16 h-16 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center">
+                    <User className="w-8 h-8 text-white" />
+                  </div>
+                </div>
               </div>
-              <div>
-                <dt className="text-sm font-medium text-gray-500">Email</dt>
-                <dd className="mt-1 text-sm text-gray-900">{user?.email}</dd>
-              </div>
-              <div>
-                <dt className="text-sm font-medium text-gray-500">Ngày tạo</dt>
-                <dd className="mt-1 text-sm text-gray-900">
-                  {profile?.created_at ? new Date(profile.created_at).toLocaleDateString('vi-VN') : 'N/A'}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-sm font-medium text-gray-500">Trạng thái</dt>
-                <dd className="mt-1">
-                  <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                    Đã xác thực
-                  </span>
-                </dd>
-              </div>
-            </dl>
-            <div className="mt-6">
-              <button
-                onClick={() => navigate('/profile')}
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"
-              >
-                Chỉnh sửa thông tin
-              </button>
             </div>
           </div>
-        </div>
 
-        {/* Quick Actions */}
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          <div className="bg-white overflow-hidden shadow rounded-lg">
+          {/* Stats Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            {stats.map((stat) => (
+              <Card key={stat.label} className="overflow-hidden hover:shadow-lg transition-shadow">
+                <div className="p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className={`w-12 h-12 rounded-xl ${stat.bgColor} flex items-center justify-center`}>
+                      <stat.icon className={`w-6 h-6 ${stat.iconColor}`} />
+                    </div>
+                    <TrendingUp className="w-4 h-4 text-green-500" />
+                  </div>
+                  <h3 className="text-2xl font-bold text-foreground mb-1">{stat.value}</h3>
+                  <p className="text-sm text-muted-foreground">{stat.label}</p>
+                </div>
+              </Card>
+            ))}
+          </div>
+
+          {/* Quick Actions */}
+          <Card className="mb-8 overflow-hidden">
             <div className="p-6">
-              <div className="flex items-center">
-                <div className="flex-shrink-0 bg-blue-500 rounded-md p-3">
-                  <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-                  </svg>
-                </div>
-                <div className="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
-                      Tìm khách sạn
-                    </dt>
-                    <dd className="text-lg font-medium text-gray-900">
-                      <button
-                        onClick={() => navigate('/')}
-                        className="text-blue-600 hover:text-blue-500"
-                      >
-                        Bắt đầu →
-                      </button>
-                    </dd>
-                  </dl>
-                </div>
+              <h2 className="text-xl font-bold text-foreground mb-6 flex items-center gap-2">
+                <Hotel className="w-5 h-5 text-primary" />
+                Thao tác nhanh
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {quickActions.map((action) => (
+                  <Button
+                    key={action.label}
+                    onClick={() => navigate(action.path)}
+                    className={`${action.color} text-white h-24 flex-col gap-2 hover:scale-105 transition-transform shadow-md`}
+                  >
+                    <action.icon className="w-6 h-6" />
+                    <span className="font-semibold">{action.label}</span>
+                  </Button>
+                ))}
               </div>
             </div>
-          </div>
+          </Card>
 
-          <div className="bg-white overflow-hidden shadow rounded-lg">
+          {/* User Info Card */}
+          <Card className="overflow-hidden">
+            <div className="bg-gradient-to-r from-gray-50 to-gray-100 p-6 border-b">
+              <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
+                <User className="w-5 h-5 text-primary" />
+                Thông tin tài khoản
+              </h2>
+            </div>
             <div className="p-6">
-              <div className="flex items-center">
-                <div className="flex-shrink-0 bg-green-500 rounded-md p-3">
-                  <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                  </svg>
+              <dl className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="flex flex-col gap-1">
+                  <dt className="text-sm font-medium text-muted-foreground">Họ tên</dt>
+                  <dd className="text-base font-semibold text-foreground">{profile?.full_name || 'Chưa cập nhật'}</dd>
                 </div>
-                <div className="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
-                      Đặt phòng của tôi
-                    </dt>
-                    <dd className="text-lg font-medium text-gray-900">
-                      <button
-                        onClick={() => navigate('/bookings')}
-                        className="text-green-600 hover:text-green-500"
-                      >
-                        Xem →
-                      </button>
-                    </dd>
-                  </dl>
+                <div className="flex flex-col gap-1">
+                  <dt className="text-sm font-medium text-muted-foreground">Email</dt>
+                  <dd className="text-base font-semibold text-foreground">{user?.email}</dd>
                 </div>
+                <div className="flex flex-col gap-1">
+                  <dt className="text-sm font-medium text-muted-foreground">Ngày tạo</dt>
+                  <dd className="text-base font-semibold text-foreground">
+                    {profile?.created_at ? new Date(profile.created_at).toLocaleDateString('vi-VN') : 'N/A'}
+                  </dd>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <dt className="text-sm font-medium text-muted-foreground">Trạng thái</dt>
+                  <dd className="mt-1">
+                    <span className="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                      ✓ Đã xác thực
+                    </span>
+                  </dd>
+                </div>
+              </dl>
+              <div className="mt-6">
+                <Button
+                  onClick={() => navigate('/profile')}
+                  className="bg-primary hover:bg-primary/90"
+                >
+                  Chỉnh sửa thông tin
+                </Button>
               </div>
             </div>
-          </div>
-
-          <div className="bg-white overflow-hidden shadow rounded-lg">
-            <div className="p-6">
-              <div className="flex items-center">
-                <div className="flex-shrink-0 bg-purple-500 rounded-md p-3">
-                  <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                  </svg>
-                </div>
-                <div className="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt className="text-sm font-medium text-gray-500 truncate">
-                      Hồ sơ cá nhân
-                    </dt>
-                    <dd className="text-lg font-medium text-gray-900">
-                      <button
-                        onClick={() => navigate('/profile')}
-                        className="text-purple-600 hover:text-purple-500"
-                      >
-                        Cập nhật →
-                      </button>
-                    </dd>
-                  </dl>
-                </div>
-              </div>
-            </div>
-          </div>
+          </Card>
         </div>
       </main>
     </div>

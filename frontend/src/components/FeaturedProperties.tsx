@@ -13,8 +13,6 @@ interface Hotel {
   imageUrl?: string;
 }
 
-const FEATURED_IDS = [64, 65, 176, 205, 172, 14];
-
 const FeaturedProperties = () => {
   const navigate = useNavigate();
   const [properties, setProperties] = useState<Hotel[]>([]);
@@ -24,16 +22,23 @@ const FeaturedProperties = () => {
   useEffect(() => {
     const fetchFeatured = async () => {
       try {
-        const results = await Promise.all(
-          FEATURED_IDS.map(async (id) => {
-            const res = await fetch(
-              `http://localhost:5000/api/properties/${id}`
-            );
-            if (!res.ok) throw new Error(`Failed to load property ${id}`);
-            return (await res.json()) as Hotel;
+        // Fetch all hotels
+        const res = await fetch('http://localhost:5000/api/properties');
+        if (!res.ok) throw new Error('Failed to load properties');
+        const allHotels = (await res.json()) as Hotel[];
+
+        // Filter and sort: 5-star hotels, high price, many reviews
+        const featured = allHotels
+          .filter(hotel => hotel.star >= 4.5) // 4.5 sao trở lên (gần 5 sao)
+          .sort((a, b) => {
+            // Ưu tiên: số đánh giá cao → giá cao → sao cao
+            const scoreA = (a.reviewsCount || 0) * 100 + (a.price || 0) / 1000 + (a.star || 0);
+            const scoreB = (b.reviewsCount || 0) * 100 + (b.price || 0) / 1000 + (b.star || 0);
+            return scoreB - scoreA;
           })
-        );
-        setProperties(results);
+          .slice(0, 6); // Lấy 6 khách sạn top
+
+        setProperties(featured);
       } catch (err) {
         setError(
           err instanceof Error

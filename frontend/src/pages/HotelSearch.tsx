@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
-import { MapPin, Star, DollarSign, Filter, Search, Hotel as HotelIcon, User, LogOut } from 'lucide-react';
+import { MapPin, Star, DollarSign, Filter, Search, Hotel as HotelIcon, User, LogOut, Navigation, LayoutDashboard, Heart } from 'lucide-react';
 import { Menu, X } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Slider } from '@/components/ui/slider';
+import { Toggle } from '@/components/ui/toggle';
 import { Link, useNavigate } from 'react-router-dom';
 import HotelMap from '@/components/HotelMap';
 import { useAuth } from '@/contexts/AuthContext';
@@ -112,8 +114,13 @@ const HotelSearch = () => {
   const [selectedPriceRange, setSelectedPriceRange] = useState<string>('all');
   const [showFilters, setShowFilters] = useState(false);
   const [showMobileList, setShowMobileList] = useState(false);
+  const [useLocationFilter, setUseLocationFilter] = useState(false);
+  const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
+  const maxDistance = 3; // Fixed at 3km
+  const [gettingLocation, setGettingLocation] = useState(false);
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
+  const { toast } = useToast();
 
   const filterOptions: FilterOptions = {
     searchStrings: ['Khách sạn', 'Resort', 'Villa', 'Homestay', 'Motel', 'Boutique hotel'],
@@ -147,7 +154,7 @@ const HotelSearch = () => {
     starRatings: [5, 4, 3, 2, 1],
     priceMin: 0,
     priceMax: 10000000,
-    totalHotels: 865,
+    totalHotels: 3000,
   };
 
   const handleSearch = () => {
@@ -164,9 +171,18 @@ const HotelSearch = () => {
     setIsLoggingOut(true);
     try {
       await signOut();
+      toast({
+        title: "Đăng xuất thành công",
+        description: "Hẹn gặp lại bạn!",
+      });
       navigate('/', { replace: true });
     } catch (error) {
       console.error('Error signing out:', error);
+      toast({
+        title: "Lỗi đăng xuất",
+        description: "Không thể đăng xuất. Vui lòng thử lại.",
+        variant: "destructive",
+      });
     } finally {
       setIsLoggingOut(false);
     }
@@ -204,6 +220,59 @@ const HotelSearch = () => {
 
     fetchHotels();
   }, []);
+
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371; // Radius of Earth in km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  };
+
+  const toggleLocationFilter = () => {
+    if (useLocationFilter) {
+      // Turn off location filter
+      setUseLocationFilter(false);
+      setUserLocation(null);
+      applyLocalFilters(hotels);
+    } else {
+      // Turn on location filter - get user location
+      setGettingLocation(true);
+      if ('geolocation' in navigator) {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const userPos: [number, number] = [
+              position.coords.latitude,
+              position.coords.longitude
+            ];
+            setUserLocation(userPos);
+            setUseLocationFilter(true);
+            setGettingLocation(false);
+          },
+          (error) => {
+            console.error('Geolocation error:', error);
+            alert('Không thể lấy vị trí của bạn. Vui lòng kiểm tra quyền truy cập.');
+            setGettingLocation(false);
+          }
+        );
+      } else {
+        alert('Trình duyệt của bạn không hỗ trợ định vị');
+        setGettingLocation(false);
+      }
+    }
+  };
+
+  // Auto-apply filter when location changes
+  useEffect(() => {
+    if (useLocationFilter && userLocation && hotels.length > 0) {
+      applyLocalFilters(hotels);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [useLocationFilter, userLocation]);
 
   const performSemanticSearch = async (query: string) => {
     if (!query.trim()) {
@@ -297,6 +366,17 @@ const HotelSearch = () => {
       (h) => h.price >= minPrice && h.price <= maxPrice
     );
 
+    // Filter by distance from user location
+    if (useLocationFilter && userLocation) {
+      filtered = filtered.filter((h) => {
+        const distance = calculateDistance(
+          userLocation[0], userLocation[1],
+          h.lat, h.lon
+        );
+        return distance <= maxDistance;
+      });
+    }
+
     console.log('Filter results:', filtered.length, 'hotels');
 
     setFilteredHotels(filtered);
@@ -305,20 +385,28 @@ const HotelSearch = () => {
 
   return (
     <div className="h-screen flex flex-col">
-      <nav className="bg-white border-b shadow-sm z-20">
-        <div className="px-6 py-4">
-          <div className="flex items-center justify-between">
-            <Link to="/" className="flex items-center gap-2">
-              <div className="w-10 h-10 rounded-lg bg-gradient-to-r from-primary to-primary-hover flex items-center justify-center">
-                <HotelIcon className="w-6 h-6 text-white" />
+      <nav className="bg-gradient-to-r from-sky-400 via-blue-500 to-cyan-400 backdrop-blur-md shadow-2xl border-b-4 border-white/20 z-20">
+        <div className="px-6 py-5">
+          <div className="flex items-center relative">
+            <Link to="/" className="flex items-center gap-3 group">
+              <div className="w-12 h-12 rounded-xl bg-white/90 flex items-center justify-center shadow-md group-hover:shadow-xl transition-all duration-300 group-hover:scale-105">
+                <HotelIcon className="w-7 h-7 text-sky-600" />
               </div>
-              <span className="text-xl font-bold text-foreground">3T2M1Stay</span>
+              <span className="text-2xl font-bold text-white drop-shadow-md">3T2M1Stay</span>
             </Link>
 
-            <div className="flex items-center gap-4">
-              <Link to="/" className="text-muted-foreground hover:text-primary transition-colors">
+            <div className="flex items-center gap-4 absolute left-1/2 -translate-x-1/2">
+              <Link to="/" className="px-5 py-2.5 rounded-lg text-white font-semibold text-base border border-white/25 hover:border-white/50 hover:bg-white/10 transition-all duration-200 backdrop-blur-sm shadow-md hover:shadow-lg hover:scale-105">
                 Trang chủ
               </Link>
+              <Link to="/search" className="px-5 py-2.5 rounded-lg text-white font-semibold text-base border border-white/25 hover:border-white/50 hover:bg-white/10 transition-all duration-200 backdrop-blur-sm shadow-md hover:shadow-lg hover:scale-105">
+                Tìm khách sạn
+              </Link>
+              <Link to="/about" className="px-5 py-2.5 rounded-lg text-white font-semibold text-base border border-white/25 hover:border-white/50 hover:bg-white/10 transition-all duration-200 backdrop-blur-sm shadow-md hover:shadow-lg hover:scale-105">
+                Về chúng tôi
+              </Link>
+            </div>
+            <div className="flex items-center gap-3 ml-auto">
               {user ? (
                 <DropdownMenu modal={false}>
                   <DropdownMenuTrigger asChild>
@@ -327,42 +415,54 @@ const HotelSearch = () => {
                       {user.email}
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="z-[10002]">
+                  <DropdownMenuContent align="end" className="w-64 z-[10002]">
                     <DropdownMenuLabel>Tài khoản của tôi</DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => navigate('/dashboard')}>
-                      <User className="w-4 h-4 mr-2" />
-                      Dashboard
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => navigate('/profile')}>
-                      <User className="w-4 h-4 mr-2" />
-                      Hồ sơ
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => navigate('/bookings')}>
-                      <HotelIcon className="w-4 h-4 mr-2" />
-                      Đặt phòng của tôi
-                    </DropdownMenuItem>
+                    <ScrollArea className="h-[200px] pr-3">
+                      <div className="space-y-1 pr-1">
+                        <DropdownMenuItem onClick={() => navigate('/dashboard')} className="cursor-pointer focus:bg-accent">
+                          <LayoutDashboard className="w-4 h-4 mr-2" />
+                          Dashboard
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => navigate('/profile')} className="cursor-pointer focus:bg-accent">
+                          <User className="w-4 h-4 mr-2" />
+                          Hồ sơ cá nhân
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => navigate('/bookings')} className="cursor-pointer focus:bg-accent">
+                          <HotelIcon className="w-4 h-4 mr-2" />
+                          Đặt phòng của tôi
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => navigate('/wishlist')} className="cursor-pointer focus:bg-accent">
+                          <Heart className="w-4 h-4 mr-2" />
+                          Khách sạn yêu thích
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => navigate('/search')} className="cursor-pointer focus:bg-accent">
+                          <HotelIcon className="w-4 h-4 mr-2" />
+                          Lịch sử tìm kiếm
+                        </DropdownMenuItem>
+                      </div>
+                    </ScrollArea>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem 
                       onClick={handleSignOut}
                       disabled={isLoggingOut}
-                      className="disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="text-red-600 cursor-pointer focus:text-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <LogOut className={`w-4 h-4 mr-2 ${isLoggingOut ? 'animate-spin' : ''}`} />
-                      {isLoggingOut ? 'Đang đăng xuất...' : 'Đăng xuất'}
+                      {isLoggingOut ? 'Đăng đăng xuất...' : 'Đăng xuất'}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               ) : (
                 <>
                   <Link to="/login">
-                    <Button variant="ghost" size="sm">
+                    <Button variant="ghost" size="sm" className="font-semibold text-white hover:bg-white/20 hover:text-white transition-all duration-200 border border-white/30">
                       <User className="w-4 h-4 mr-2" />
                       Đăng nhập
                     </Button>
                   </Link>
                   <Link to="/register">
-                    <Button size="sm" className="bg-primary hover:bg-primary-hover">
+                    <Button size="sm" className="bg-white text-sky-600 hover:bg-white/90 font-semibold shadow-md hover:shadow-lg transition-all duration-200">
                       Đăng ký
                     </Button>
                   </Link>
@@ -465,20 +565,48 @@ const HotelSearch = () => {
               </SheetContent>
             </Sheet>
 
+            <div className="flex items-center gap-2 h-12 px-4 border rounded-lg bg-white">
+              <Navigation className="w-4 h-4 text-gray-600" />
+              <span className="hidden sm:inline text-sm font-medium text-gray-700">Vị trí</span>
+              <button
+                onClick={toggleLocationFilter}
+                disabled={gettingLocation}
+                className={`
+                  relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2
+                  ${gettingLocation ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+                  ${useLocationFilter ? 'bg-sky-500' : 'bg-gray-300'}
+                `}
+              >
+                <span
+                  className={`
+                    inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-lg
+                    ${useLocationFilter ? 'translate-x-6' : 'translate-x-1'}
+                  `}
+                >
+                  {gettingLocation && (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <div className="w-2 h-2 border border-sky-500 border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  )}
+                </span>
+              </button>
+            </div>
+
             <Button 
               onClick={handleSearch} 
               disabled={isSearching}
-              className="gap-2 h-12 px-6"
+              className="gap-2 h-12 px-4 sm:px-6"
             >
               {isSearching ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  Đang tìm...
+                  <span className="hidden sm:inline">Đang tìm...</span>
                 </>
               ) : (
                 <>
                   <Search className="w-4 h-4" />
-                  Tìm kiếm
+                  <span className="hidden sm:inline">Tìm kiếm</span>
+                  <span className="sm:hidden">Searching</span>
                 </>
               )}
             </Button>
@@ -625,6 +753,7 @@ const HotelSearch = () => {
                 setSelectedHotel(hotel);
                 setShowMobileList(true);
               }}
+              userLocation={useLocationFilter ? userLocation : null}
             />
           </div>
         </div>
