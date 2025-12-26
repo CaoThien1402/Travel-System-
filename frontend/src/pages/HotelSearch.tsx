@@ -402,6 +402,9 @@ const HotelSearch = () => {
               <Link to="/search" className="px-5 py-2.5 rounded-lg text-white font-semibold text-base border border-white/25 hover:border-white/50 hover:bg-white/10 transition-all duration-200 backdrop-blur-sm shadow-md hover:shadow-lg hover:scale-105">
                 Tìm khách sạn
               </Link>
+              <Link to="/smart-search" className="px-5 py-2.5 rounded-lg text-white font-semibold text-base border border-white/25 hover:border-white/50 hover:bg-white/10 transition-all duration-200 backdrop-blur-sm shadow-md hover:shadow-lg hover:scale-105 flex items-center gap-2">
+                <span>✨</span> Tìm kiếm Thông Minh
+              </Link>
               <Link to="/about" className="px-5 py-2.5 rounded-lg text-white font-semibold text-base border border-white/25 hover:border-white/50 hover:bg-white/10 transition-all duration-200 backdrop-blur-sm shadow-md hover:shadow-lg hover:scale-105">
                 Về chúng tôi
               </Link>

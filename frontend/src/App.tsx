@@ -6,10 +6,10 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 
 import { AuthProvider } from "@/contexts/AuthContext";
-import Chatbot from "@/components/Chatbot";
 
 // Pages
 import Index from "@/pages/Index";
+import SmartSearch from "@/pages/SmartSearch";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
 import HotelSearch from "@/pages/HotelSearch";
@@ -64,6 +64,7 @@ function App() {
               <Route path="/search" element={<HotelSearch />} />
               <Route path="/properties/:id" element={<PropertyDetail />} />
               <Route path="/about" element={<About />} />
+              <Route path="/smart-search" element={<SmartSearch />} />
               <Route path="/auth/callback" element={<AuthCallback />} />
 
               {/* ================= PROTECTED ROUTES ================= */}
@@ -106,9 +107,6 @@ function App() {
               {/* ================= 404 ================= */}
               <Route path="*" element={<NotFound />} />
             </Routes>
-
-            {/* Global Chatbot */}
-            <Chatbot />
           </BrowserRouter>
         </AuthProvider>
       </TooltipProvider>
