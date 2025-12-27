@@ -255,10 +255,10 @@ const SmartSearch = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-blue-50 to-cyan-50">
+    <div className="h-screen flex flex-col bg-gradient-to-br from-slate-50 via-blue-50 to-cyan-50 overflow-hidden">
       <Navbar />
       
-      <main className="flex-1 pt-20 flex">
+      <main className="flex-1 pt-20 flex overflow-hidden">
         {/* Mobile Sidebar Toggle */}
         <button
           onClick={() => setMobileSidebarOpen(!mobileSidebarOpen)}
@@ -277,8 +277,8 @@ const SmartSearch = () => {
 
         {/* Sidebar */}
         <div className={cn(
-          "fixed lg:relative inset-y-0 left-0 z-50 lg:z-auto w-72 bg-gray-900 text-white flex flex-col transition-transform duration-300 lg:translate-x-0 pt-20 lg:pt-0",
-          mobileSidebarOpen ? "translate-x-0" : "-translate-x-full"
+          "fixed top-20 bottom-0 left-0 z-40 w-72 bg-gray-900 text-white flex flex-col transition-transform duration-300",
+          mobileSidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         )}>
           {/* New Chat Button */}
           <div className="p-4 border-b border-gray-700">
@@ -352,8 +352,8 @@ const SmartSearch = () => {
         </div>
 
         {/* Main Chat Area */}
-        <div className="flex-1 flex flex-col min-w-0">
-          <div className="flex-1 flex flex-col max-w-4xl mx-auto w-full px-4">
+        <div className="flex-1 flex flex-col min-w-0 lg:ml-72 overflow-hidden">
+          <div className="flex-1 flex flex-col max-w-4xl mx-auto w-full px-4 overflow-hidden">
             {/* Header - Only show when no conversation */}
             {!currentConversationId || messages.length <= 1 ? (
               <div className="text-center py-12">
@@ -385,8 +385,12 @@ const SmartSearch = () => {
                       )}
                     >
                       {message.sender === 'bot' && (
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-primary-hover flex items-center justify-center flex-shrink-0 shadow-md">
-                          <Bot className="w-5 h-5 text-white" />
+                        <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 shadow-lg ring-2 ring-white">
+                          <img 
+                            src="https://cdn-icons-png.flaticon.com/512/4712/4712109.png" 
+                            alt="AI Bot" 
+                            className="w-full h-full object-cover"
+                          />
                         </div>
                       )}
                       <div
@@ -475,8 +479,12 @@ const SmartSearch = () => {
                   ))}
                   {isLoading && (
                     <div className="flex gap-3 justify-start">
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-primary-hover flex items-center justify-center shadow-md">
-                        <Bot className="w-5 h-5 text-white" />
+                      <div className="w-10 h-10 rounded-full overflow-hidden shadow-lg ring-2 ring-white animate-pulse">
+                        <img 
+                          src="https://cdn-icons-png.flaticon.com/512/4712/4712109.png" 
+                          alt="AI Bot" 
+                          className="w-full h-full object-cover"
+                        />
                       </div>
                       <div className="bg-white border rounded-2xl rounded-bl-md px-5 py-4 flex items-center gap-2 shadow-sm">
                         <Loader2 className="w-4 h-4 animate-spin text-primary" />

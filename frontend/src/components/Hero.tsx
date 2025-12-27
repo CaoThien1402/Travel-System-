@@ -1,4 +1,3 @@
-import SearchBar from "./SearchBar";
 import heroImage from "@/assets/hero-hotel.jpg";
 
 const Hero = () => {
@@ -26,10 +25,6 @@ const Hero = () => {
           <p className="text-sm md:text-base text-white/80 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-150">
             Đặt phòng dễ dàng • Thanh toán linh hoạt • Hủy miễn phí
           </p>
-        </div>
-
-        <div className="animate-in fade-in slide-in-from-bottom-4 duration-700 delay-200">
-          <SearchBar />
         </div>
 
         {/* Stats */}

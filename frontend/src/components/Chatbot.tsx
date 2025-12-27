@@ -153,12 +153,16 @@ const Chatbot = () => {
         {/* Header */}
         <div className="bg-gradient-to-r from-primary to-primary-hover p-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
-              <Bot className="w-6 h-6 text-white" />
+            <div className="w-11 h-11 rounded-full overflow-hidden ring-2 ring-white/40 shadow-lg">
+              <img 
+                src="https://cdn-icons-png.flaticon.com/512/4712/4712109.png" 
+                alt="AI Bot" 
+                className="w-full h-full object-cover bg-white"
+              />
             </div>
             <div>
               <h3 className="text-white font-semibold">Trợ lý AI 3T2M1Stay</h3>
-              <p className="text-white/80 text-xs">Luôn sẵn sàng hỗ trợ</p>
+              <p className="text-white/80 text-xs flex items-center gap-1"><span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span> Luôn sẵn sàng hỗ trợ</p>
             </div>
           </div>
           <Button
@@ -183,8 +187,12 @@ const Chatbot = () => {
                 )}
               >
                 {message.sender === 'bot' && (
-                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                    <Bot className="w-6 h-6 text-primary" />
+                  <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 shadow-md ring-2 ring-gray-100">
+                    <img 
+                      src="https://cdn-icons-png.flaticon.com/512/4712/4712109.png" 
+                      alt="AI Bot" 
+                      className="w-full h-full object-cover bg-white"
+                    />
                   </div>
                 )}
                 <div
@@ -269,8 +277,12 @@ const Chatbot = () => {
             ))}
             {isLoading && (
               <div className="flex gap-3 justify-start">
-                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                  <Bot className="w-6 h-6 text-primary" />
+                <div className="w-10 h-10 rounded-full overflow-hidden shadow-md ring-2 ring-gray-100 animate-pulse">
+                  <img 
+                    src="https://cdn-icons-png.flaticon.com/512/4712/4712109.png" 
+                    alt="AI Bot" 
+                    className="w-full h-full object-cover bg-white"
+                  />
                 </div>
                 <div className="bg-muted rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-2">
                   <Loader2 className="w-4 h-4 animate-spin" />
