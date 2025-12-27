@@ -410,12 +410,25 @@ const HotelSearch = () => {
               </Link>
             </div>
             <div className="flex items-center gap-3 ml-auto">
-              {user ? (
+              {isLoading ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-full bg-gray-200 animate-pulse"></div>
+                  <div className="w-20 h-4 bg-gray-200 rounded animate-pulse"></div>
+                </div>
+              ) : user ? (
                 <DropdownMenu modal={false}>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="sm" disabled={isLoggingOut}>
-                      <User className="w-4 h-4 mr-2" />
-                      {user.email}
+                    <Button 
+                      variant="ghost" 
+                      className="flex items-center gap-2 hover:bg-accent focus:outline-none"
+                      disabled={isLoggingOut}
+                    >
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center">
+                        <User className="w-4 h-4 text-white" />
+                      </div>
+                      <span className="max-w-[150px] truncate">
+                        {user.email}
+                      </span>
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-64 z-[10002]">
@@ -452,7 +465,7 @@ const HotelSearch = () => {
                       className="text-red-600 cursor-pointer focus:text-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <LogOut className={`w-4 h-4 mr-2 ${isLoggingOut ? 'animate-spin' : ''}`} />
-                      {isLoggingOut ? 'Đăng đăng xuất...' : 'Đăng xuất'}
+                      {isLoggingOut ? 'Đang đăng xuất...' : 'Đăng xuất'}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
