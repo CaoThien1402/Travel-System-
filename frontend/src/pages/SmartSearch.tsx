@@ -1,6 +1,21 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Send, Loader2, Bot, User, Sparkles, Plus, Trash2, MessageSquare, Menu, X, Clock } from 'lucide-react';
+import {
+  Send,
+  Loader2,
+  Bot,
+  User,
+  Sparkles,
+  Plus,
+  Trash2,
+  MessageSquare,
+  Menu,
+  X,
+  Clock,
+  MapPin,
+  Star,
+  ArrowRight,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -19,12 +34,41 @@ interface Message {
 
 interface HotelCard {
   id?: number | null;
+
+  // name
   hotelname?: string;
   name?: string;
+
+  // location
   district?: string;
-  price_text?: string;
+  district_num?: number | null;
+
+  // pricing
+  price_text?: string; // "490000 - 1150000" hoặc "Chưa cập nhật giá"
   priceText?: string;
   price_vnd?: number | null;
+  price_min_vnd?: number | null;
+  price_max_vnd?: number | null;
+
+  // rating
+  rating?: number | null;
+  star?: number | null;
+
+  // explain
+  match_reason?: string;
+
+  // ui extras (nếu backend trả về)
+  ui?: {
+    district_label?: string;
+    price_label?: string;
+    rating_label?: string;
+    star_label?: string;
+    badges?: string[];
+    highlights?: string[];
+    cta_label?: string;
+  };
+
+  // media + navigation
   imageUrl?: string;
   image_url?: string;
   detail_path?: string;
@@ -39,12 +83,148 @@ interface Conversation {
   updatedAt: Date;
 }
 
+const STORAGE_KEY = 'smart_search_conversations';
+const TOP_K = 10;
+
+// ------- helpers -------
 const pickHotelName = (h: HotelCard) => h.hotelname || h.name || 'Khách sạn';
-const pickHotelPrice = (h: HotelCard) => h.price_text || h.priceText || (h.price_vnd ? `${Number(h.price_vnd).toLocaleString('vi-VN')} ₫/đêm` : '—');
+const pickHotelPrice = (h: HotelCard) =>
+  h.price_text || h.priceText || (h.price_vnd ? `${Number(h.price_vnd).toLocaleString('vi-VN')} ₫/đêm` : '—');
 const pickHotelImage = (h: HotelCard) => h.imageUrl || h.image_url || '';
 const pickHotelLink = (h: HotelCard) => h.detail_path || h.detail_url || (h.id != null ? `/properties/${h.id}` : '');
 
-const STORAGE_KEY = 'smart_search_conversations';
+const pickHotelDistrict = (h: HotelCard) =>
+  h.ui?.district_label || h.district || (h.district_num ? `Quận ${h.district_num}` : '—');
+
+const pickHotelPriceLabel = (h: HotelCard) =>
+  h.ui?.price_label ||
+  (h.price_text || h.priceText) ||
+  (h.price_vnd ? `${Number(h.price_vnd).toLocaleString('vi-VN')} ₫/đêm` : 'Chưa cập nhật giá');
+
+const pickHotelBadges = (h: HotelCard) => (Array.isArray(h.ui?.badges) ? h.ui!.badges!.slice(0, 3) : []);
+const pickHotelHighlights = (h: HotelCard) =>
+  Array.isArray(h.ui?.highlights) ? h.ui!.highlights!.slice(0, 3) : [];
+
+const pickHotelRatingLabel = (h: HotelCard) => {
+  if (h.ui?.rating_label) return h.ui.rating_label;
+  if (typeof h.rating === 'number' && Number.isFinite(h.rating)) return h.rating.toFixed(1);
+  return '';
+};
+
+function HotelResultCard({
+  h,
+  idx,
+  onOpen,
+}: {
+  h: HotelCard;
+  idx: number;
+  onOpen: () => void;
+}) {
+  const name = pickHotelName(h);
+  const district = pickHotelDistrict(h);
+  const price = pickHotelPriceLabel(h);
+  const img = pickHotelImage(h);
+  const badges = pickHotelBadges(h);
+  const highlights = pickHotelHighlights(h);
+  const ratingLabel = pickHotelRatingLabel(h);
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className={cn(
+        'group w-full text-left overflow-hidden rounded-2xl border bg-white shadow-sm hover:shadow-lg transition-all',
+        'hover:-translate-y-[1px] hover:border-primary/30'
+      )}
+    >
+      {/* Image */}
+      <div className="relative w-full h-44 md:h-52 bg-gray-200">
+        {img ? (
+          <img
+            src={img}
+            alt={name}
+            className="h-full w-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).style.display = 'none';
+            }}
+          />
+        ) : (
+          <div className="h-full w-full flex items-center justify-center">
+            <Bot className="w-10 h-10 text-gray-400" />
+          </div>
+        )}
+
+        {/* overlay */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/0 to-black/0" />
+
+        {/* index */}
+        <div className="absolute top-3 left-3 px-2.5 py-1 rounded-full text-xs font-semibold bg-white/90 border">
+          #{idx + 1}
+        </div>
+
+        {/* rating */}
+        {ratingLabel ? (
+          <div className="absolute top-3 right-3 px-2.5 py-1 rounded-full text-xs font-semibold bg-white/90 border flex items-center gap-1">
+            <Star className="w-3.5 h-3.5" />
+            {ratingLabel}
+          </div>
+        ) : null}
+
+        {/* badges */}
+        {badges.length ? (
+          <div className="absolute bottom-3 left-3 flex flex-wrap gap-1.5">
+            {badges.map((b) => (
+              <span key={b} className="px-2 py-1 rounded-full text-[11px] font-medium bg-white/90 border">
+                {b}
+              </span>
+            ))}
+          </div>
+        ) : null}
+      </div>
+
+      {/* Body */}
+      <div className="p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="font-semibold text-base md:text-lg leading-snug line-clamp-2 text-gray-900">{name}</div>
+            <div className="mt-1 text-sm text-gray-600 flex items-center gap-1">
+              <MapPin className="w-4 h-4" />
+              <span className="line-clamp-1">{district}</span>
+            </div>
+          </div>
+
+          <div className="text-right flex-shrink-0">
+            <div className="text-xs text-gray-500">Giá/đêm</div>
+            <div className="text-base md:text-lg font-bold text-primary leading-tight">{price}</div>
+          </div>
+        </div>
+
+        {/* highlights */}
+        {highlights.length ? (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {highlights.slice(0, 2).map((t) => (
+              <span key={t} className="px-2.5 py-1 rounded-full text-xs bg-gray-100 text-gray-700 border">
+                {t}
+              </span>
+            ))}
+          </div>
+        ) : null}
+
+        {/* reason */}
+        {h.match_reason ? <div className="mt-3 text-sm text-gray-600 line-clamp-2">✨ {h.match_reason}</div> : null}
+
+        {/* CTA */}
+        <div className="mt-4 flex items-center justify-between">
+          <div className="text-xs text-gray-500">Nhấn để xem chi tiết</div>
+          <div className="inline-flex items-center gap-1 text-sm font-semibold text-primary">
+            {h.ui?.cta_label || 'Xem phòng'}
+            <ArrowRight className="w-4 h-4" />
+          </div>
+        </div>
+      </div>
+    </button>
+  );
+}
 
 const SmartSearch = () => {
   const navigate = useNavigate();
@@ -53,7 +233,6 @@ const SmartSearch = () => {
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -73,9 +252,7 @@ const SmartSearch = () => {
           })),
         }));
         setConversations(convs);
-        if (convs.length > 0) {
-          setCurrentConversationId(convs[0].id);
-        }
+        if (convs.length > 0) setCurrentConversationId(convs[0].id);
       } catch (e) {
         console.error('Error loading conversations:', e);
       }
@@ -84,19 +261,15 @@ const SmartSearch = () => {
 
   // Save conversations to localStorage
   useEffect(() => {
-    if (conversations.length > 0) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(conversations));
-    }
+    if (conversations.length > 0) localStorage.setItem(STORAGE_KEY, JSON.stringify(conversations));
   }, [conversations]);
 
   // Auto scroll to bottom
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [conversations, currentConversationId]);
 
-  const currentConversation = conversations.find(c => c.id === currentConversationId);
+  const currentConversation = conversations.find((c) => c.id === currentConversationId);
   const messages = currentConversation?.messages || [];
 
   const createNewConversation = () => {
@@ -106,7 +279,7 @@ const SmartSearch = () => {
       messages: [
         {
           id: '1',
-          text: 'Xin chào! Tôi là trợ lý AI của 3T2M1Stay. Tôi có thể giúp bạn tìm khách sạn phù hợp với nhu cầu của bạn. Hãy cho tôi biết bạn muốn tìm phòng ở khu vực nào, mức giá bao nhiêu, hoặc các tiện nghi bạn cần?',
+          text: 'Xin chào! Tôi là trợ lý AI của 3T2M1Stay. Hãy cho tôi biết bạn muốn tìm khách sạn ở đâu, ngân sách bao nhiêu/đêm và cần tiện ích gì nhé.',
           sender: 'bot',
           timestamp: new Date(),
         },
@@ -114,15 +287,15 @@ const SmartSearch = () => {
       createdAt: new Date(),
       updatedAt: new Date(),
     };
-    setConversations(prev => [newConv, ...prev]);
+    setConversations((prev) => [newConv, ...prev]);
     setCurrentConversationId(newConv.id);
     setMobileSidebarOpen(false);
   };
 
   const deleteConversation = (id: string) => {
-    setConversations(prev => prev.filter(c => c.id !== id));
+    setConversations((prev) => prev.filter((c) => c.id !== id));
     if (currentConversationId === id) {
-      const remaining = conversations.filter(c => c.id !== id);
+      const remaining = conversations.filter((c) => c.id !== id);
       setCurrentConversationId(remaining.length > 0 ? remaining[0].id : null);
     }
   };
@@ -133,18 +306,13 @@ const SmartSearch = () => {
   };
 
   const updateConversationTitle = (convId: string, firstUserMessage: string) => {
-    const title = firstUserMessage.length > 30 
-      ? firstUserMessage.substring(0, 30) + '...' 
-      : firstUserMessage;
-    setConversations(prev => 
-      prev.map(c => c.id === convId ? { ...c, title, updatedAt: new Date() } : c)
-    );
+    const title = firstUserMessage.length > 30 ? firstUserMessage.substring(0, 30) + '...' : firstUserMessage;
+    setConversations((prev) => prev.map((c) => (c.id === convId ? { ...c, title, updatedAt: new Date() } : c)));
   };
 
   const handleSendMessage = async () => {
     if (!inputMessage.trim() || isLoading) return;
 
-    // Create new conversation if none exists
     if (!currentConversationId) {
       createNewConversation();
       return;
@@ -157,40 +325,34 @@ const SmartSearch = () => {
       timestamp: new Date(),
     };
 
-    // Check if this is the first user message to update title
-    const isFirstUserMessage = messages.filter(m => m.sender === 'user').length === 0;
-    if (isFirstUserMessage) {
-      updateConversationTitle(currentConversationId, inputMessage);
-    }
+    const isFirstUserMessage = messages.filter((m) => m.sender === 'user').length === 0;
+    if (isFirstUserMessage) updateConversationTitle(currentConversationId, inputMessage);
 
-    setConversations(prev =>
-      prev.map(c =>
-        c.id === currentConversationId
-          ? { ...c, messages: [...c.messages, userMessage], updatedAt: new Date() }
-          : c
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.id === currentConversationId ? { ...c, messages: [...c.messages, userMessage], updatedAt: new Date() } : c
       )
     );
+
+    const outgoingText = inputMessage;
     setInputMessage('');
     setIsLoading(true);
 
     try {
       const response = await fetch('http://localhost:5000/api/chat', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          message: inputMessage,
-          history: messages.map(m => ({
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: outgoingText,
+          top_k: TOP_K,
+          history: messages.map((m) => ({
             role: m.sender === 'user' ? 'user' : 'assistant',
-            content: m.text
-          }))
+            content: m.text,
+          })),
         }),
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to get response');
-      }
+      if (!response.ok) throw new Error('Failed to get response');
 
       const data = await response.json();
 
@@ -202,11 +364,9 @@ const SmartSearch = () => {
         hotels: Array.isArray(data.hotels) ? data.hotels : undefined,
       };
 
-      setConversations(prev =>
-        prev.map(c =>
-          c.id === currentConversationId
-            ? { ...c, messages: [...c.messages, botMessage], updatedAt: new Date() }
-            : c
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === currentConversationId ? { ...c, messages: [...c.messages, botMessage], updatedAt: new Date() } : c
         )
       );
     } catch (error) {
@@ -217,11 +377,9 @@ const SmartSearch = () => {
         sender: 'bot',
         timestamp: new Date(),
       };
-      setConversations(prev =>
-        prev.map(c =>
-          c.id === currentConversationId
-            ? { ...c, messages: [...c.messages, errorMessage], updatedAt: new Date() }
-            : c
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === currentConversationId ? { ...c, messages: [...c.messages, errorMessage], updatedAt: new Date() } : c
         )
       );
     } finally {
@@ -237,17 +395,16 @@ const SmartSearch = () => {
   };
 
   const suggestedQuestions = [
-    "Tìm khách sạn giá rẻ ở Quận 1",
-    "Khách sạn có hồ bơi gần trung tâm",
-    "Phòng cho gia đình 4 người dưới 2 triệu",
-    "Khách sạn view đẹp ở Đà Nẵng",
+    'Tìm khách sạn giá rẻ ở Quận 1 dưới 1tr',
+    'Khách sạn có hồ bơi gần trung tâm',
+    'Phòng cho gia đình 4 người dưới 2 triệu',
+    'Khách sạn view đẹp gần sông',
   ];
 
   const formatDate = (date: Date) => {
     const now = new Date();
     const diff = now.getTime() - date.getTime();
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-    
     if (days === 0) return 'Hôm nay';
     if (days === 1) return 'Hôm qua';
     if (days < 7) return `${days} ngày trước`;
@@ -255,10 +412,10 @@ const SmartSearch = () => {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-gradient-to-br from-slate-50 via-blue-50 to-cyan-50 overflow-hidden">
+    <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-blue-50 to-cyan-50">
       <Navbar />
-      
-      <main className="flex-1 pt-20 flex overflow-hidden">
+
+      <main className="flex-1 pt-20 flex">
         {/* Mobile Sidebar Toggle */}
         <button
           onClick={() => setMobileSidebarOpen(!mobileSidebarOpen)}
@@ -269,23 +426,19 @@ const SmartSearch = () => {
 
         {/* Overlay for mobile */}
         {mobileSidebarOpen && (
-          <div 
-            className="lg:hidden fixed inset-0 bg-black/50 z-40"
-            onClick={() => setMobileSidebarOpen(false)}
-          />
+          <div className="lg:hidden fixed inset-0 bg-black/50 z-40" onClick={() => setMobileSidebarOpen(false)} />
         )}
 
         {/* Sidebar */}
-        <div className={cn(
-          "fixed top-20 bottom-0 left-0 z-40 w-72 bg-gray-900 text-white flex flex-col transition-transform duration-300",
-          mobileSidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
-        )}>
+        <div
+          className={cn(
+            'fixed lg:relative inset-y-0 left-0 z-50 lg:z-auto w-72 bg-gray-900 text-white flex flex-col transition-transform duration-300 lg:translate-x-0 pt-20 lg:pt-0',
+            mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+          )}
+        >
           {/* New Chat Button */}
           <div className="p-4 border-b border-gray-700">
-            <Button
-              onClick={createNewConversation}
-              className="w-full bg-gray-700 hover:bg-gray-600 text-white gap-2"
-            >
+            <Button onClick={createNewConversation} className="w-full bg-gray-700 hover:bg-gray-600 text-white gap-2">
               <Plus className="w-4 h-4" />
               Cuộc trò chuyện mới
             </Button>
@@ -301,14 +454,12 @@ const SmartSearch = () => {
                   <p className="text-xs mt-1">Bấm nút trên để bắt đầu</p>
                 </div>
               ) : (
-                conversations.map(conv => (
+                conversations.map((conv) => (
                   <div
                     key={conv.id}
                     className={cn(
-                      "group flex items-center gap-2 p-3 rounded-lg cursor-pointer transition-colors",
-                      currentConversationId === conv.id 
-                        ? "bg-gray-700" 
-                        : "hover:bg-gray-800"
+                      'group flex items-center gap-2 p-3 rounded-lg cursor-pointer transition-colors',
+                      currentConversationId === conv.id ? 'bg-gray-700' : 'hover:bg-gray-800'
                     )}
                     onClick={() => selectConversation(conv.id)}
                   >
@@ -352,8 +503,8 @@ const SmartSearch = () => {
         </div>
 
         {/* Main Chat Area */}
-        <div className="flex-1 flex flex-col min-w-0 lg:ml-72 overflow-hidden">
-          <div className="flex-1 flex flex-col max-w-4xl mx-auto w-full px-4 overflow-hidden">
+        <div className="flex-1 flex flex-col min-w-0">
+          <div className="flex-1 flex flex-col max-w-5xl mx-auto w-full px-4">
             {/* Header - Only show when no conversation */}
             {!currentConversationId || messages.length <= 1 ? (
               <div className="text-center py-12">
@@ -362,114 +513,82 @@ const SmartSearch = () => {
                     <Sparkles className="w-8 h-8 text-white" />
                   </div>
                   <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-primary to-cyan-600 bg-clip-text text-transparent">
-                    Tìm kiếm Thông Minh
+                    Tìm khách sạn thông minh
                   </h1>
                 </div>
                 <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-                  Trợ lý AI của 3T2M1Stay sẽ giúp bạn tìm khách sạn phù hợp nhất. 
-                  Hãy mô tả nhu cầu của bạn bằng ngôn ngữ tự nhiên!
+                  Nhập yêu cầu như bạn đang chat: khu vực, ngân sách/đêm, tiện ích… hệ thống sẽ gợi ý ~10 lựa chọn phù hợp nhất.
                 </p>
               </div>
             ) : null}
 
             {/* Messages Area */}
             {currentConversationId && (
-              <ScrollArea className="flex-1 py-4" ref={scrollRef}>
+              <ScrollArea className="flex-1 py-4" ref={scrollRef as any}>
                 <div className="space-y-4 pb-4">
                   {messages.map((message) => (
                     <div
                       key={message.id}
-                      className={cn(
-                        "flex gap-3",
-                        message.sender === 'user' ? "justify-end" : "justify-start"
-                      )}
+                      className={cn('flex gap-3', message.sender === 'user' ? 'justify-end' : 'justify-start')}
                     >
                       {message.sender === 'bot' && (
-                        <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 shadow-lg ring-2 ring-white">
-                          <img 
-                            src="https://cdn-icons-png.flaticon.com/512/4712/4712109.png" 
-                            alt="AI Bot" 
-                            className="w-full h-full object-cover"
-                          />
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-primary-hover flex items-center justify-center flex-shrink-0 shadow-md">
+                          <Bot className="w-5 h-5 text-white" />
                         </div>
                       )}
+
                       <div
                         className={cn(
-                          "max-w-[75%] rounded-2xl px-5 py-4 text-sm shadow-sm",
                           message.sender === 'user'
-                            ? "bg-gradient-to-r from-primary to-primary-hover text-white rounded-br-md"
-                            : "bg-white text-foreground rounded-bl-md border"
+                            ? 'max-w-[75%] rounded-2xl px-5 py-4 text-sm shadow-sm bg-gradient-to-r from-primary to-primary-hover text-white rounded-br-md'
+                            : cn(
+                                'max-w-[92%] md:max-w-[88%] rounded-2xl px-5 py-4 text-sm shadow-sm bg-white text-foreground rounded-bl-md border',
+                                message.hotels?.length && 'p-4 md:p-5'
+                              )
                         )}
                       >
                         <p className="whitespace-pre-wrap leading-relaxed">{message.text}</p>
 
+                        {/* HOTEL CARDS (Booking-style) */}
                         {message.sender === 'bot' && message.hotels?.length ? (
-                          <div className="mt-4 space-y-3">
-                            {message.hotels.slice(0, 5).map((h, idx) => {
-                              const name = pickHotelName(h);
-                              const price = pickHotelPrice(h);
-                              const district = h.district || '';
-                              const img = pickHotelImage(h);
-                              const link = pickHotelLink(h);
-                              const canNavigate = Boolean(link);
-                              return (
-                                <button
-                                  key={`${h.id ?? idx}-${name}`}
-                                  type="button"
-                                  onClick={() => {
-                                    if (!canNavigate) return;
-                                    navigate(link);
-                                  }}
-                                  className={cn(
-                                    "w-full text-left rounded-xl border-2 border-gray-100 bg-gray-50 hover:bg-white hover:border-primary/30 transition-all duration-200 p-3 shadow-sm hover:shadow-md",
-                                    !canNavigate && "opacity-70 cursor-not-allowed"
-                                  )}
-                                >
-                                  <div className="flex gap-3">
-                                    <div className="h-20 w-24 rounded-lg overflow-hidden bg-gray-200 flex-shrink-0">
-                                      {img ? (
-                                        <img
-                                          src={img}
-                                          alt={name}
-                                          className="h-full w-full object-cover"
-                                          onError={(e) => {
-                                            (e.currentTarget as HTMLImageElement).style.display = 'none';
-                                          }}
-                                        />
-                                      ) : (
-                                        <div className="h-full w-full flex items-center justify-center">
-                                          <Bot className="w-8 h-8 text-gray-400" />
-                                        </div>
-                                      )}
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                      <div className="font-semibold text-gray-800 leading-snug line-clamp-2">{name}</div>
-                                      {district && (
-                                        <div className="text-xs text-gray-500 mt-1 flex items-center gap-1">
-                                          📍 {district}
-                                        </div>
-                                      )}
-                                      <div className="text-sm font-medium text-primary mt-1">💰 {price}</div>
-                                      {canNavigate && (
-                                        <div className="text-xs mt-2 text-primary font-medium flex items-center gap-1">
-                                          Xem chi tiết →
-                                        </div>
-                                      )}
-                                    </div>
+                          <div className="mt-5">
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="text-sm font-semibold text-gray-800">Gợi ý phù hợp cho bạn</div>
+                              <div className="text-xs text-gray-500">
+                                {Math.min(TOP_K, message.hotels.length)} lựa chọn
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              {message.hotels.slice(0, TOP_K).map((h, idx) => {
+                                const link = pickHotelLink(h);
+                                const canNavigate = Boolean(link);
+
+                                return (
+                                  <div
+                                    key={`${h.id ?? idx}-${pickHotelName(h)}`}
+                                    className={cn(!canNavigate && 'opacity-70')}
+                                  >
+                                    <HotelResultCard
+                                      h={h}
+                                      idx={idx}
+                                      onOpen={() => {
+                                        if (!canNavigate) return;
+                                        navigate(link);
+                                      }}
+                                    />
                                   </div>
-                                </button>
-                              );
-                            })}
+                                );
+                              })}
+                            </div>
                           </div>
                         ) : null}
 
                         <span className="text-xs opacity-60 mt-2 block">
-                          {message.timestamp.toLocaleTimeString('vi-VN', {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
+                          {message.timestamp.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
+
                       {message.sender === 'user' && (
                         <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center flex-shrink-0 shadow-md">
                           <User className="w-5 h-5 text-white" />
@@ -477,14 +596,11 @@ const SmartSearch = () => {
                       )}
                     </div>
                   ))}
+
                   {isLoading && (
                     <div className="flex gap-3 justify-start">
-                      <div className="w-10 h-10 rounded-full overflow-hidden shadow-lg ring-2 ring-white animate-pulse">
-                        <img 
-                          src="https://cdn-icons-png.flaticon.com/512/4712/4712109.png" 
-                          alt="AI Bot" 
-                          className="w-full h-full object-cover"
-                        />
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-primary-hover flex items-center justify-center shadow-md">
+                        <Bot className="w-5 h-5 text-white" />
                       </div>
                       <div className="bg-white border rounded-2xl rounded-bl-md px-5 py-4 flex items-center gap-2 shadow-sm">
                         <Loader2 className="w-4 h-4 animate-spin text-primary" />
@@ -505,9 +621,7 @@ const SmartSearch = () => {
                     <button
                       key={idx}
                       onClick={() => {
-                        if (!currentConversationId) {
-                          createNewConversation();
-                        }
+                        if (!currentConversationId) createNewConversation();
                         setInputMessage(question);
                       }}
                       className="px-4 py-2 text-sm bg-white hover:bg-primary/10 text-primary rounded-full transition-colors duration-200 border border-primary/20 hover:border-primary/40"
@@ -526,35 +640,29 @@ const SmartSearch = () => {
                   value={inputMessage}
                   onChange={(e) => setInputMessage(e.target.value)}
                   onKeyPress={handleKeyPress}
-                  placeholder="Nhập yêu cầu tìm kiếm của bạn... VD: Tìm khách sạn giá rẻ ở Quận 1"
+                  placeholder="Nhập yêu cầu... VD: Quận 1 dưới 1tr, gần trung tâm, có hồ bơi"
                   disabled={isLoading}
                   className="flex-1 h-12 text-base rounded-xl border-2 border-gray-200 focus:border-primary transition-colors bg-white"
                 />
                 <Button
                   onClick={() => {
-                    if (!currentConversationId) {
-                      createNewConversation();
-                    }
+                    if (!currentConversationId) createNewConversation();
                     handleSendMessage();
                   }}
                   disabled={!inputMessage.trim() || isLoading}
                   size="icon"
                   className="bg-gradient-to-r from-primary to-primary-hover hover:opacity-90 h-12 w-12 rounded-xl shadow-md"
                 >
-                  {isLoading ? (
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                  ) : (
-                    <Send className="h-5 w-5" />
-                  )}
+                  {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
                 </Button>
               </div>
-              <p className="text-xs text-muted-foreground mt-3 text-center">
-                Powered by AI • 3T2M1Stay
-              </p>
+              <p className="text-xs text-muted-foreground mt-3 text-center">Powered by AI • 3T2M1Stay</p>
             </div>
           </div>
         </div>
       </main>
+
+      <Footer />
     </div>
   );
 };

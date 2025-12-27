@@ -1,138 +1,108 @@
-import sys
-import os
-import math
-import traceback
 from typing import Any, Dict, Optional
 
-from fastapi import FastAPI, Request
+import numpy as np
+import pandas as pd
+from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 app = FastAPI()
 
-# --- HÀM DỌN DẸP DỮ LIỆU (FIX LỖI NaN) ---
-def sanitize_for_json(obj):
-    """
-    Đệ quy đi qua toàn bộ dữ liệu.
-    Nếu gặp NaN (Not a Number) hoặc Infinity -> Đổi thành None (null trong JSON).
-    """
+# -------------------------
+# NaN-safe JSON
+# -------------------------
+def sanitize_for_json(obj: Any) -> Any:
+    if obj is None:
+        return None
+    if isinstance(obj, (np.integer, np.int64, np.int32)):
+        return int(obj)
+    if isinstance(obj, (np.floating, np.float64, np.float32)):
+        v = float(obj)
+        return None if (pd.isna(v) or v != v) else v
     if isinstance(obj, float):
-        if math.isnan(obj) or math.isinf(obj):
-            return None
-        return obj
-    elif isinstance(obj, dict):
-        return {k: sanitize_for_json(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [sanitize_for_json(i) for i in obj]
+        return None if (pd.isna(obj) or obj != obj) else obj
+    if isinstance(obj, dict):
+        return {str(k): sanitize_for_json(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [sanitize_for_json(x) for x in obj]
     return obj
 
-# --- BẮT LỖI TOÀN CỤC ---
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    error_msg = f"Lỗi Server Python: {str(exc)}"
-    print(f"❌ {error_msg}")
-    print(traceback.format_exc())
-    return JSONResponse(
-        status_code=200,
-        content={
-            "answer": error_msg,
-            "hotels": []
-        }
-    )
-
-# --- IMPORT LOGIC ---
+# -------------------------
+# Import qabot
+# -------------------------
 try:
-    sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
-    # Code mới trong qabot.py
     from qabot import (
         chat_with_agent,
-        load_hotel_dataframe,
-        load_vector_db,
-        build_lexical_index,
         load_llm,
+        load_vector_db,
+        load_hotel_dataframe,
+        build_lexical_index,
     )
-    print("✅ Đã import qabot (new).")
-except ImportError as e:
-    print(f"⚠️ Lỗi import qabot: {e}")
+    _IMPORT_ERROR = None
+except Exception as e:
+    _IMPORT_ERROR = e
+
     def chat_with_agent(*args, **kwargs):  # type: ignore
-        raise e
+        raise _IMPORT_ERROR
 
-    load_hotel_dataframe = None
-    load_vector_db = None
-    build_lexical_index = None
     load_llm = None
+    load_vector_db = None
+    load_hotel_dataframe = None
+    build_lexical_index = None
 
-# --- LOAD DATA (cache) ---
+# -------------------------
+# Cache
+# -------------------------
+LLM = None
 VECTOR_DB = None
 DF = None
 THR = None
 LEX = None
-LLM = None
 
 @app.on_event("startup")
 async def startup():
-    global VECTOR_DB, DF, THR, LEX, LLM
-    try:
-        if load_hotel_dataframe:
-            DF, THR = load_hotel_dataframe()
-            print("✅ Đã load CSV + thresholds")
-
-        if load_vector_db:
-            VECTOR_DB = load_vector_db()
-            print("✅ Đã load Vector DB")
-
-        if build_lexical_index and DF is not None:
-            LEX = build_lexical_index(DF, THR)
-            print("✅ Đã build Lexical Index (TF-IDF)")
-
-        if load_llm:
-            # Lưu ý: cần export GOOGLE_API_KEY trước khi chạy server
-            LLM = load_llm()
-            print("✅ Đã load LLM")
-
-    except Exception as e:
-        print(f"⚠️ Lỗi khởi động (Load Data): {e}")
-        print(traceback.format_exc())
+    global LLM, VECTOR_DB, DF, THR, LEX
+    if _IMPORT_ERROR is not None:
+        return
+    LLM = load_llm()
+    VECTOR_DB = load_vector_db()
+    DF, THR = load_hotel_dataframe()
+    LEX = build_lexical_index(DF, THR)
 
 class ChatRequest(BaseModel):
     query: str
-    top_k: int = 5
-    # Cho phép truyền filter từ UI (tuỳ bạn dùng hay không)
-    # Ví dụ: {"district_nums":[5], "max_price": 500000, "sort_by":"Giá tăng dần"}
+    top_k: Optional[int] = 10
     filters: Optional[Dict[str, Any]] = None
 
-@app.post("/api/chat")
-async def chat_endpoint(request: ChatRequest):
-    print(f"📩 Nhận câu hỏi: {request.query}")
+@app.get("/health")
+async def health():
+    return {"ok": True, "import_error": str(_IMPORT_ERROR) if _IMPORT_ERROR else None}
 
-    raw_result = chat_with_agent(
-        user_input=request.query,
-        top_k=request.top_k,
-        llm=LLM,                # cache LLM
-        vector_db=VECTOR_DB,    # cache FAISS
-        df=DF,                  # cache dataframe
-        thr=THR,                # cache thresholds
-        lex=LEX,                # cache lexical index
-        filters=request.filters # optional
+@app.post("/api/chat")
+async def api_chat(req: ChatRequest):
+    if _IMPORT_ERROR is not None:
+        return JSONResponse(
+            status_code=500,
+            content={"answer": f"Không import được qabot.py: {_IMPORT_ERROR}", "hotels": []},
+        )
+
+    try:
+        top_k = int(req.top_k or 10)
+    except Exception:
+        top_k = 10
+
+    result = chat_with_agent(
+        user_input=req.query,
+        llm=LLM,
+        vector_db=VECTOR_DB,
+        df=DF,
+        thr=THR,
+        lex=LEX,
+        filters=req.filters,
+        top_k=top_k,
     )
 
-    answer = "Không có câu trả lời"
-    hotels = []
+    answer = result.get("answer", "")
+    hotels = (result.get("tool_result") or {}).get("results") or []
 
-    if isinstance(raw_result, dict):
-        answer = raw_result.get("answer", str(raw_result))
-        tool_res = raw_result.get("tool_result", {})
-        # tool_res có dạng {"tool_name":..., "query":..., "results"🙁...]}
-        if isinstance(tool_res, dict):
-            hotels = tool_res.get("results", [])
-        elif isinstance(tool_res, list):
-            hotels = tool_res
-    else:
-        answer = str(raw_result)
-
-    final_response = {
-        "answer": answer,
-        "hotels": hotels
-    }
-    return sanitize_for_json(final_response)
+    return sanitize_for_json({"answer": answer, "hotels": hotels})
