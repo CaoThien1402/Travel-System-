@@ -19,6 +19,8 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import HotelMap from "@/components/HotelMap";
+import HotelPOI from "@/components/HotelPOI";
+import HotelAmenities from "@/components/HotelAmenities";
 import Navbar from "@/components/Navbar";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -31,7 +33,7 @@ interface Hotel {
   district: string;
   city: string;
   lat: number;
-  lon: number;
+  lng: number;
   categoryName: string;
   categories: string[];
   description1?: string;
@@ -142,6 +144,11 @@ export default function PropertyDetail() {
       type: string;
     }>;
   } | null>(null);
+  
+  // Review form state
+  const [reviewText, setReviewText] = useState("");
+  const [reviewRating, setReviewRating] = useState(5);
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -282,7 +289,7 @@ export default function PropertyDetail() {
             setUserLocation(userPos);
             
             if (hotel) {
-              const route = await fetchRoute(userPos, [hotel.lat, hotel.lon]);
+              const route = await fetchRoute(userPos, [hotel.lat, hotel.lng]);
               if (route) {
                 setRouteData(route);
                 setShowDirections(true);
@@ -398,6 +405,72 @@ export default function PropertyDetail() {
       });
     } finally {
       setWishlistLoading(false);
+    }
+  };
+
+  const handleSubmitReview = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!session) {
+      toast({
+        title: "Vui lòng đăng nhập",
+        description: "Bạn cần đăng nhập để viết đánh giá",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!reviewText.trim()) {
+      toast({
+        title: "Thiếu nội dung",
+        description: "Vui lòng nhập nội dung đánh giá",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSubmittingReview(true);
+    try {
+      const response = await fetch(`http://localhost:5000/api/properties/${id}/reviews`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          rating: reviewRating,
+          comment: reviewText,
+        }),
+      });
+
+      if (!response.ok) throw new Error('Failed to submit review');
+
+      toast({
+        title: "Đánh giá thành công",
+        description: "Cảm ơn bạn đã chia sẻ trải nghiệm!",
+      });
+
+      // Add review to local state
+      if (hotel) {
+        setHotel({
+          ...hotel,
+          reviews: [reviewText, ...(hotel.reviews || [])],
+          reviewsCount: (hotel.reviewsCount || 0) + 1,
+        });
+      }
+
+      // Reset form
+      setReviewText("");
+      setReviewRating(5);
+    } catch (err) {
+      console.error('Error submitting review:', err);
+      toast({
+        title: "Có lỗi xảy ra",
+        description: "Không thể gửi đánh giá. Vui lòng thử lại",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmittingReview(false);
     }
   };
 
@@ -711,7 +784,7 @@ export default function PropertyDetail() {
                 <div className="h-72 overflow-hidden rounded-xl border">
                   <HotelMap 
                     hotels={[hotel]} 
-                    center={showDirections && userLocation ? userLocation : [hotel.lat, hotel.lon]} 
+                    center={showDirections && userLocation ? userLocation : [hotel.lat, hotel.lng]} 
                     zoom={showDirections ? 13 : 15}
                     userLocation={showDirections ? userLocation : undefined}
                     routeCoordinates={showDirections && routeData ? routeData.coordinates : undefined}
@@ -793,11 +866,106 @@ export default function PropertyDetail() {
             )}
           </Card>
 
+          {/* POI - Các địa điểm xung quanh */}
+          {hotel.lat && hotel.lng && (
+            <HotelPOI lat={hotel.lat} lng={hotel.lng} />
+          )}
+
+          {/* Tiện nghi chi tiết theo style Booking.com */}
+          <HotelAmenities amenities={amenities} hotelName={hotelname} />
+
           <Card className="p-6 space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-xl font-semibold">Đánh giá gần đây</h3>
               <InfoBadge label={`${reviews.length || 0} nhận xét`} />
             </div>
+            
+            {/* Form viết đánh giá - chỉ hiện khi đã đăng nhập */}
+            {session && user ? (
+              <form onSubmit={handleSubmitReview} className="border-b pb-4 mb-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                    <span className="text-primary font-semibold text-sm">
+                      {user.email?.charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                  <div>
+                    <p className="font-medium text-sm">Viết đánh giá của bạn</p>
+                    <p className="text-xs text-muted-foreground">{user.email}</p>
+                  </div>
+                </div>
+                
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground">Đánh giá:</span>
+                    <div className="flex gap-1">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button
+                          key={star}
+                          type="button"
+                          onClick={() => setReviewRating(star)}
+                          className="transition-colors"
+                        >
+                          <Star
+                            className={cn(
+                              "h-5 w-5",
+                              star <= reviewRating
+                                ? "fill-yellow-400 text-yellow-400"
+                                : "text-gray-300"
+                            )}
+                          />
+                        </button>
+                      ))}
+                    </div>
+                    <span className="text-sm font-medium ml-2">{reviewRating}/5</span>
+                  </div>
+                  
+                  <textarea
+                    value={reviewText}
+                    onChange={(e) => setReviewText(e.target.value)}
+                    placeholder="Chia sẻ trải nghiệm của bạn về khách sạn này..."
+                    className="w-full min-h-[100px] p-3 border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-primary"
+                    disabled={isSubmittingReview}
+                  />
+                  
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setReviewText("");
+                        setReviewRating(5);
+                      }}
+                      disabled={isSubmittingReview}
+                    >
+                      Hủy
+                    </Button>
+                    <Button
+                      type="submit"
+                      size="sm"
+                      disabled={isSubmittingReview || !reviewText.trim()}
+                    >
+                      {isSubmittingReview ? "Đang gửi..." : "Gửi đánh giá"}
+                    </Button>
+                  </div>
+                </div>
+              </form>
+            ) : (
+              <div className="border rounded-lg p-4 bg-muted/50 text-center mb-4">
+                <p className="text-sm text-muted-foreground mb-2">
+                  Đăng nhập để viết đánh giá cho khách sạn này
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => navigate('/login')}
+                >
+                  Đăng nhập
+                </Button>
+              </div>
+            )}
+            
             {reviews.length ? (
               <div className="grid gap-3 md:grid-cols-2">
                 {reviews.slice(0, 6).map((review, idx) => {

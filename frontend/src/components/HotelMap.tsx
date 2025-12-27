@@ -28,7 +28,7 @@ interface Hotel {
   price: number;
   star: number;
   lat: number;
-  lon: number;
+  lng: number;
   imageUrl?: string;
 }
 
@@ -99,7 +99,7 @@ const HotelMap = ({
       {hotels.map((hotel) => (
         <Marker
           key={hotel.id}
-          position={[hotel.lat, hotel.lon] as [number, number]}
+          position={[hotel.lat, hotel.lng] as [number, number]}
           eventHandlers={{
             click: () => onMarkerClick?.(hotel),
           }}

@@ -34,7 +34,7 @@ export interface Hotel {
   district: string;              // District (Quận)
   city: string;                  // City (usually "Hồ Chí Minh")
   lat: number;                   // Latitude coordinate
-  lon: number;                   // Longitude coordinate
+  lng: number;                   // Longitude coordinate
   searchString: string;          // Combined string for searching
   categoryName: string;          // Category (Hotel, Homestay, etc.)
   categories: string[];          // Array of categories
@@ -208,7 +208,7 @@ export const loadHotelsFromCSV = async (): Promise<Hotel[]> => {
             district: row.district || '',
             city: row.city || '',
             lat: parseFloat(row.lat) || 0,                    // Convert string to number
-            lon: parseFloat(row.lng || row.lon) || 0,         // CSV uses 'lng', fallback to 'lon'
+            lng: parseFloat(row.lng || row.lon) || 0,         // CSV uses 'lng', fallback to 'lon'
             searchString: row.searchString || '',
             categoryName: row.categoryName || '',
             categories: parseArrayString(row.categories),      // Parse array from string
