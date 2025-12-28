@@ -1,6 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useRef, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   Send,
   Loader2,
@@ -85,6 +87,82 @@ interface Conversation {
 
 const STORAGE_KEY = "smart_search_conversations";
 const TOP_K = 10;
+
+function BotMarkdown({ text }: { text: string }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      // react-markdown mặc định KHÔNG render HTML raw (an toàn hơn).
+      components={{
+        p: ({ ...props }) => (
+          <p className="whitespace-pre-wrap leading-relaxed" {...props} />
+        ),
+        ul: ({ ...props }) => (
+          <ul className="list-disc pl-5 space-y-1 my-2" {...props} />
+        ),
+        ol: ({ ...props }) => (
+          <ol className="list-decimal pl-5 space-y-1 my-2" {...props} />
+        ),
+        li: ({ ...props }) => <li className="my-0" {...props} />,
+        a: ({ ...props }) => (
+          <a
+            className="underline underline-offset-2 text-primary hover:opacity-80"
+            target="_blank"
+            rel="noreferrer"
+            {...props}
+          />
+        ),
+        table: ({ ...props }) => (
+          <div className="overflow-x-auto my-3 rounded-xl border">
+            <table className="w-full border-collapse text-sm" {...props} />
+          </div>
+        ),
+        thead: ({ ...props }) => <thead className="bg-muted/40" {...props} />,
+        th: ({ ...props }) => (
+          <th
+            className="border px-3 py-2 text-left font-semibold whitespace-nowrap"
+            {...props}
+          />
+        ),
+        td: ({ ...props }) => (
+          <td className="border px-3 py-2 align-top" {...props} />
+        ),
+        code: ({ className, children, ...props }) => {
+          const isBlock =
+            typeof className === "string" && className.includes("language-");
+
+          if (isBlock) {
+            return (
+              <code className={cn("font-mono text-xs", className)} {...props}>
+                {children}
+              </code>
+            );
+          }
+
+          return (
+            <code
+              className={cn("px-1 py-0.5 rounded bg-muted font-mono", className)}
+              {...props}
+            >
+              {children}
+            </code>
+          );
+        },
+        pre: ({ className, children, ...props }) => (
+          <pre
+            className={cn("p-3 rounded-xl bg-muted overflow-x-auto", className)}
+            {...props}
+          >
+            {children}
+          </pre>
+        ),
+}}
+    >
+      {text}
+    </ReactMarkdown>
+  );
+}
+
 
 const buildInitialBotMessage = (): Message => ({
   id: "1",
@@ -689,9 +767,13 @@ const SmartSearch = () => {
                               )
                         )}
                       >
-                        <p className="whitespace-pre-wrap leading-relaxed">
-                          {message.text}
-                        </p>
+                        {message.sender === "bot" ? (
+                          <BotMarkdown text={message.text} />
+                        ) : (
+                          <p className="whitespace-pre-wrap leading-relaxed">
+                            {message.text}
+                          </p>
+                        )}
 
                         {/* HOTEL CARDS (Booking-style) */}
                         {message.sender === "bot" && message.hotels?.length ? (

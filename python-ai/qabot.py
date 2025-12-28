@@ -109,7 +109,7 @@ def _parse_price_number(piece: str) -> Optional[int]:
 
     s = s.replace("₫", "").replace("vnd", "").strip()
 
-    m = re.search(r"(\d+(?:[\.,]\d+)?)\s*(trieu|triệu|million|m)\b", s)
+    m = re.search(r"(\d+(?:[\.,]\d+)?)\s*(trieu|triệu|million|m|tr)\b", s)
     if m:
         num = float(m.group(1).replace(",", "."))
         return int(num * 1_000_000)
@@ -230,120 +230,346 @@ def _price_bucket(price_vnd: Optional[float], thr: Optional[PriceThresholds]) ->
     return "luxury"
 
 
+# =========================
+# ✅ COMPARE MODE + HELPERS
+# =========================
+
+def _detect_compare_intent(q: str) -> bool:
+    qn = _strip_accents((q or "").lower())
+    keys = [
+        "so sanh", "so sánh", "compare", "bang so sanh", "bảng so sánh",
+        "lap bang", "lập bảng", "doi chieu", "đối chiếu"
+    ]
+    return any(k in qn for k in keys)
+
+
+def _safe_cell(s: Any) -> str:
+    s = "" if s is None else str(s)
+    s = s.replace("|", "/").strip()
+    return s if s else "—"
+
+
+def _short_list_text(s: Any, max_items: int = 4) -> str:
+    if not s:
+        return "—"
+    t = str(s)
+    parts = re.split(r"[,\n;/•]+", t)
+    parts = [p.strip() for p in parts if p.strip()]
+    if not parts:
+        return "—"
+    return ", ".join(parts[:max_items]) + ("" if len(parts) <= max_items else ", ...")
+
+
+def _district_num_from_hotel(h: Dict[str, Any]) -> Optional[int]:
+    if h.get("district_num") is not None:
+        try:
+            return int(h["district_num"])
+        except Exception:
+            pass
+    return _extract_district_num(h.get("district", ""))
+
+
+def _nearby_attractions(h: Dict[str, Any]) -> str:
+    # Nếu data có field gần đó thì ưu tiên
+    for k in ["nearby", "nearby_attractions", "attractions", "landmarks", "places_nearby"]:
+        if h.get(k):
+            return _short_list_text(h.get(k), 4)
+
+    d = _district_num_from_hotel(h)
+    fallback = {
+        1: "Chợ Bến Thành, Phố đi bộ Nguyễn Huệ, Nhà thờ Đức Bà, Bưu điện TP",
+        3: "Bảo tàng Chứng tích Chiến tranh, Hồ Con Rùa, Nhà thờ Tân Định, Công viên Lê Văn Tám",
+        5: "Chợ Lớn, Chùa Bà Thiên Hậu, Phố người Hoa, An Đông Plaza",
+        7: "Crescent Mall, Cầu Ánh Sao, Hồ Bán Nguyệt, SC VivoCity",
+        10: "Kỳ Hòa, Việt Nam Quốc Tự, Vạn Hạnh Mall",
+        2: "Thảo Điền, Landmark 81 (gần), Khu bờ sông (tuỳ vị trí)",
+    }
+    return fallback.get(d, "Các điểm tham quan trung tâm (tuỳ vị trí)")
+
+
+def _hotel_price_mid_for_rank(h: Dict[str, Any]) -> Optional[int]:
+    mn = h.get("price_min_vnd")
+    mx = h.get("price_max_vnd")
+    if isinstance(mn, int) and isinstance(mx, int):
+        return int((mn + mx) / 2)
+    if isinstance(mn, int):
+        return mn
+    if isinstance(mx, int):
+        return mx
+
+    p = h.get("price_vnd")
+    if isinstance(p, (int, float)) and p == p:
+        return int(p)
+    return None
+
+
+def _rank_score(h: Dict[str, Any]) -> float:
+    try:
+        rating = float(h.get("rating") or 0)
+        if rating != rating:
+            rating = 0.0
+    except Exception:
+        rating = 0.0
+
+    try:
+        star = float(h.get("star") or 0)
+        if star != star:
+            star = 0.0
+    except Exception:
+        star = 0.0
+
+    mid = _hotel_price_mid_for_rank(h)
+    price_bonus = 0.0
+    if isinstance(mid, int) and mid > 0:
+        price_bonus = max(0.0, 1_800_000 - mid) / 1_800_000  # ~0..1
+
+    return rating * 10.0 + star * 0.8 + price_bonus * 1.2
+
+
+def _pick_top3(hotels: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    hotels = hotels or []
+    hotels_sorted = sorted(hotels, key=_rank_score, reverse=True)
+    return hotels_sorted[:3]
+
+
+def _build_compare_markdown(top3: List[Dict[str, Any]]) -> str:
+    if not top3:
+        return "Mình không tìm thấy đủ dữ liệu để so sánh 😅"
+
+    names = [_safe_cell(h.get("hotelname") or h.get("name")) for h in top3]
+
+    def col(h):
+        return {
+            "price": _safe_cell(h.get("price_text") or h.get("price")),
+            "amen": _short_list_text(h.get("amenities"), 4),
+            "loc": _safe_cell(str(h.get("district") or h.get("address") or "").split(",")[0]),
+            "near": _safe_cell(_nearby_attractions(h)),
+        }
+
+    cols = [col(h) for h in top3]
+
+    lines = ["### So sánh 3 khách sạn tốt nhất\n"]
+    for i, h in enumerate(top3, 1):
+        lines.append(
+            f"**#{i} {names[i-1]}** — 📍 {cols[i-1]['loc']} — 💰 {cols[i-1]['price']} — ⭐ {_safe_cell(h.get('rating'))}"
+        )
+
+    lines.append("\n| Tiêu chí | " + " | ".join(names) + " |")
+    lines.append("|---|" + "|".join(["---"] * len(names)) + "|")
+    lines.append("| Giá/đêm | " + " | ".join(_safe_cell(c["price"]) for c in cols) + " |")
+    lines.append("| Tiện ích | " + " | ".join(_safe_cell(c["amen"]) for c in cols) + " |")
+    lines.append("| Vị trí | " + " | ".join(_safe_cell(c["loc"]) for c in cols) + " |")
+    lines.append("| Điểm du lịch gần đó | " + " | ".join(_safe_cell(c["near"]) for c in cols) + " |")
+
+    return "\n".join(lines)
 
 
 # =========================
-# MEMORY + EXTRA PARSERS (district/price/amenities across turns)
+# ✅ MEMORY: parse constraints from history
 # =========================
 
-# Canonical terms are already accentless + normalized to match _amenities_text_norm
-_AMENITY_RULES: List[Tuple[str, List[str]]] = [
-    ("ho boi", [r"\bho\s*boi\b", r"\bpool\b"]),
-    ("wifi", [r"\bwifi\b", r"\bwi\s*fi\b", r"\binternet\b"]),
-    ("bua sang", [r"\bbua\s*sang\b", r"\bbreakfast\b"]),
-    ("dau xe", [r"\bdau\s*xe\b", r"\bparking\b", r"\bbai\s*do\b"]),
-    ("gym", [r"\bgym\b", r"\bfitness\b", r"\bphong\s*gym\b", r"\bphong\s*tap\b"]),
-    ("spa", [r"\bspa\b", r"\bmassage\b"]),
-    ("trung tam", [r"\bgan\s*trung\s*tam\b", r"\btrung\s*tam\b", r"\bdowntown\b", r"\bcenter\b"]),
-    ("san bay", [r"\bgan\s*san\s*bay\b", r"\bsan\s*bay\b", r"\bairport\b"]),
-]
-
-_NEGATION_HEAD = r"(?:khong\s*can|khong\s*muon|khong|ko|k|bo|loai\s*bo|loai)"
-
-
-def _extract_price_range_from_query(q_norm: str) -> Tuple[Optional[int], Optional[int], bool]:
-    """Return (min_vnd, max_vnd, explicit) if query expresses a range like:
-    - 'tu 1 den 2 trieu', '1-2 tr', '1~2 trieu', '1000000-2000000'
-    """
-    qn = q_norm
-
-    # 1) Range with 'trieu/tr/m'
-    m = re.search(
-        r"(?:\btu\b\s*)?(\d+(?:[\.,]\d+)?)\s*(?:tr|trieu|million|m)\s*(?:den|toi|~|-)\s*(\d+(?:[\.,]\d+)?)\s*(?:tr|trieu|million|m)\b",
-        qn,
-    )
-    if m:
-        a = _parse_price_number(m.group(1) + " trieu")
-        b = _parse_price_number(m.group(2) + " trieu")
-        if a is not None or b is not None:
-            lo, hi = (a, b) if (a or 0) <= (b or 0) else (b, a)
-            return lo, hi, True
-
-    # 2) Range where only the 2nd number carries unit, ex: "tu 1 den 2 trieu"
-    m = re.search(
-        r"(?:\btu\b\s*)?(\d+(?:[\.,]\d+)?)\s*(?:den|toi|~|-)\s*(\d+(?:[\.,]\d+)?)\s*(?:tr|trieu|million|m)\b",
-        qn,
-    )
-    if m:
-        a = _parse_price_number(m.group(1) + " trieu")
-        b = _parse_price_number(m.group(2) + " trieu")
-        if a is not None or b is not None:
-            lo, hi = (a, b) if (a or 0) <= (b or 0) else (b, a)
-            return lo, hi, True
-
-    # 3) Raw VND digits: "1.000.000 - 2.000.000"
-    m = re.search(r"(\d[\d\.,]{4,})\s*(?:den|toi|~|-)\s*(\d[\d\.,]{4,})\b", qn)
-    if m:
-        a = _parse_price_number(m.group(1))
-        b = _parse_price_number(m.group(2))
-        if a is not None or b is not None:
-            lo, hi = (a, b) if (a or 0) <= (b or 0) else (b, a)
-            return lo, hi, True
-
-    return None, None, False
-
-
-def _parse_amenities_from_query(q_norm: str) -> Tuple[List[str], List[str]]:
-    """Return (amenities_any, amenities_not) from normalized query."""
-    any_terms: List[str] = []
-    not_terms: List[str] = []
-    qn = _norm_text(q_norm)
-
-    for canon, patterns in _AMENITY_RULES:
-        hit = any(re.search(p, qn) for p in patterns)
-        if not hit:
-            continue
-
-        # Detect negation up to 3 words before canonical term
-        neg = re.search(_NEGATION_HEAD + r"(?:\s+\w+){0,3}\s+" + re.escape(canon), qn)
-        if neg:
-            not_terms.append(canon)
-        else:
-            any_terms.append(canon)
-
-    # de-dup and resolve conflicts
-    any_terms = sorted(set(any_terms))
-    not_terms = sorted(set(not_terms))
-    any_terms = [t for t in any_terms if t not in not_terms]
-    return any_terms, not_terms
-
-
-def _constraints_from_history(history: Any, thr: Optional[PriceThresholds], max_user_turns: int = 6) -> Dict[str, Any]:
-    """Build conversation memory from previous user turns."""
-    base = _parse_constraints("", thr)
+def _history_user_texts(history: Optional[List[Dict[str, Any]]], limit: int = 6) -> List[str]:
     if not history:
-        return base
-
-    user_texts: List[str] = []
-    for h in history:
-        if not isinstance(h, dict):
+        return []
+    texts: List[str] = []
+    for m in history:
+        if not isinstance(m, dict):
             continue
-        role = (h.get("role") or h.get("sender") or "").lower()
-        if role in {"user", "human"}:
-            c = h.get("content") or h.get("text") or ""
-            if isinstance(c, str) and c.strip():
-                user_texts.append(c.strip())
+        role = (m.get("role") or m.get("sender") or "").lower()
+        content = m.get("content") if m.get("content") is not None else m.get("text")
+        if content is None:
+            continue
+        if role in ("user", "human", "client", "me", "you"):
+            texts.append(str(content))
+    # lấy các message gần nhất
+    return texts[-limit:]
 
-    user_texts = user_texts[-max_user_turns:]
-    mem = base
-    for t in user_texts:
-        mem = _merge_constraints(mem, _parse_constraints(t, thr))
+
+def _merge_constraints_memory(base: Dict[str, Any], new: Dict[str, Any]) -> Dict[str, Any]:
+    """Merge memory: district/price override theo message mới, amenities thì union."""
+    out = dict(base)
+
+    # override các key “đơn”
+    for k in ["min_price", "max_price", "min_rating", "min_star", "sort_by", "price_intent", "explicit_price", "require_price"]:
+        if k in new and new[k] not in (None, "", 0):
+            out[k] = new[k]
+
+    # district override nếu message mới có district
+    if new.get("district_nums"):
+        out["district_nums"] = new["district_nums"]
+        out["district_names"] = None
+    elif new.get("district_names"):
+        out["district_names"] = new["district_names"]
+        out["district_nums"] = None
+
+    # amenities union
+    if new.get("amenities_any"):
+        old = out.get("amenities_any") or []
+        s = set([_norm_text(x) for x in old if x])
+        for a in new["amenities_any"]:
+            if a:
+                s.add(_norm_text(a))
+        out["amenities_any"] = [x for x in s if x]
+
+    return out
+
+
+def _constraints_from_history(history: Optional[List[Dict[str, Any]]], thr: Optional[PriceThresholds]) -> Dict[str, Any]:
+    """Rút tiêu chí từ các câu hỏi trước đó."""
+    mem: Dict[str, Any] = {
+        "min_price": None,
+        "max_price": None,
+        "district_nums": None,
+        "district_names": None,
+        "min_rating": None,
+        "min_star": None,
+        "sort_by": "relevance",
+        "price_intent": None,
+        "explicit_price": False,
+        "require_price": False,
+        "amenities_any": [],
+    }
+
+    for t in _history_user_texts(history, limit=6):
+        cons = _parse_constraints(t, thr)
+        mem = _merge_constraints_memory(mem, cons)
+
     return mem
 
+
+def _summarize_constraints(cons: Dict[str, Any]) -> str:
+    bits: List[str] = []
+
+    if cons.get("district_nums"):
+        bits.append("Quận " + ", ".join(str(x) for x in cons["district_nums"]))
+    elif cons.get("district_names"):
+        bits.append(", ".join(cons["district_names"]))
+
+    mn = cons.get("min_price")
+    mx = cons.get("max_price")
+    if mn is not None or mx is not None:
+        mn_txt = _format_vnd_int(mn) if mn is not None else ""
+        mx_txt = _format_vnd_int(mx) if mx is not None else ""
+        if mn is not None and mx is not None:
+            bits.append(f"{mn_txt}–{mx_txt} VND")
+        elif mn is not None:
+            bits.append(f"từ {mn_txt} VND")
+        else:
+            bits.append(f"dưới {mx_txt} VND")
+
+    if cons.get("amenities_any"):
+        # hiển thị đẹp
+        pretty_map = {
+            "ho boi": "Hồ bơi",
+            "pool": "Hồ bơi",
+            "wifi": "Wi-Fi",
+            "an sang": "Bữa sáng",
+            "breakfast": "Bữa sáng",
+            "gym": "Gym",
+            "phong tap": "Gym",
+            "spa": "Spa",
+            "parking": "Đậu xe",
+            "dau xe": "Đậu xe",
+        }
+        shown = []
+        for a in cons["amenities_any"][:3]:
+            key = _norm_text(a)
+            shown.append(pretty_map.get(key, a))
+        bits.append("Tiện ích: " + ", ".join(shown))
+
+    if cons.get("min_rating") is not None:
+        bits.append(f"Rating ≥ {cons['min_rating']}")
+
+    if cons.get("min_star") is not None:
+        bits.append(f"{cons['min_star']} sao+")
+
+    return " • ".join(bits) if bits else ""
+
+
+# =========================
+# QUERY -> CONSTRAINTS (price + district + amenities)
+# =========================
+
+def _parse_price_intent_from_query(q_norm: str, thr: Optional[PriceThresholds]) -> Tuple[Optional[int], Optional[int], bool, bool, Optional[str]]:
+    """
+    Return: (min_price, max_price, explicit_price, require_price, sort_by)
+    Supports:
+      - "tu 1 den 2 trieu", "1-2 trieu"
+      - "duoi 2 trieu", "<= 2 trieu"
+      - "tren 1 trieu", ">= 1 trieu"
+    """
+    explicit = False
+    require_price = False
+    sort_by = None
+
+    def num_to_vnd(num_str: str) -> int:
+        return int(float(num_str.replace(",", ".")) * 1_000_000)
+
+    # range: tu 1 den 2 trieu / 1 den 2 trieu / 1-2 trieu
+    m = re.search(r"(?:tu\s*)?(\d+(?:[.,]\d+)?)\s*(?:den|to|-)\s*(\d+(?:[.,]\d+)?)\s*(?:trieu|tr|m)\b", q_norm)
+    if m:
+        a = num_to_vnd(m.group(1))
+        b = num_to_vnd(m.group(2))
+        lo, hi = (a, b) if a <= b else (b, a)
+        return lo, hi, True, True, sort_by
+
+    # duoi / <=
+    m = re.search(r"(duoi|<=|<)\s*(\d+(?:[.,]\d+)?)\s*(?:trieu|tr|m)\b", q_norm)
+    if m:
+        mx = num_to_vnd(m.group(2))
+        return None, mx, True, True, sort_by
+
+    # tren / >=
+    m = re.search(r"(tren|>=|>)\s*(\d+(?:[.,]\d+)?)\s*(?:trieu|tr|m)\b", q_norm)
+    if m:
+        mn = num_to_vnd(m.group(2))
+        return mn, None, True, True, sort_by
+
+    # intent giá rẻ
+    cheap_terms = ["gia re", "binh dan", "tiet kiem", "economy", "budget"]
+    if any(t in q_norm for t in cheap_terms):
+        require_price = True
+        if thr is not None:
+            return None, int(thr.q25), False, True, "Giá tăng dần"
+        return None, None, False, True, "Giá tăng dần"
+
+    return None, None, explicit, require_price, sort_by
+
+
+def _parse_amenities_from_query(q_norm: str) -> List[str]:
+    """
+    Lấy tiện ích từ câu hỏi.
+    OR semantics: chỉ cần match 1 trong list là pass.
+    """
+    # nếu phủ định mạnh thì bỏ (đơn giản)
+    neg = any(x in q_norm for x in ["khong can", "khong muon", "loai bo", "bo ", "khong thich", "khong co"])
+
+    mapping = {
+        "ho boi": ["ho boi", "pool", "bể bơi", "be boi"],
+        "wifi": ["wifi", "wi fi", "internet"],
+        "an sang": ["an sang", "bua sang", "breakfast"],
+        "gym": ["gym", "phong tap", "phong gym", "fitness"],
+        "spa": ["spa", "massage"],
+        "parking": ["dau xe", "parking", "giu xe", "bai do xe"],
+    }
+
+    hits: List[str] = []
+    for key, kws in mapping.items():
+        if any(_norm_text(k) in q_norm for k in kws):
+            hits.append(key)
+
+    if neg and hits:
+        # nếu user “không cần X” thì thôi không add tiện ích vào filter
+        # (tránh lọc ngược, ưu tiên không phá logic)
+        return []
+
+    return hits
+
+
 def _parse_constraints(query: str, thr: Optional[PriceThresholds]) -> Dict[str, Any]:
-    """Parse điều kiện từ câu hỏi + hiểu intent 'giá rẻ' theo phân phối dữ liệu."""
+    """Parse điều kiện từ câu hỏi + hiểu intent 'giá rẻ' theo phân phối dữ liệu + tiện ích."""
     q_raw = query or ""
-    q = _strip_accents(q_raw.lower())
+    q_norm = _norm_text(q_raw)  # đã strip accents + lower + clean
 
     cons: Dict[str, Any] = {
         "min_price": None,
@@ -357,90 +583,54 @@ def _parse_constraints(query: str, thr: Optional[PriceThresholds]) -> Dict[str, 
         "explicit_price": False,
         "require_price": False,
         "amenities_any": [],
-        "amenities_not": [],
     }
 
-    nums = set(int(m.group(2)) for m in re.finditer(r"(quận|quan|district)\s*(\d+)", q))
+    # district nums
+    nums = set(int(m.group(2)) for m in re.finditer(r"(quận|quan|district)\s*(\d+)", q_norm))
     if nums:
         cons["district_nums"] = sorted(nums)
 
+    # stars
     stars = []
-    for m in re.finditer(r"(\d+)\s*sao", q):
+    for m in re.finditer(r"(\d+)\s*sao", q_norm):
         val = int(m.group(1))
         if 1 <= val <= 5:
             stars.append(val)
     if stars:
         cons["min_star"] = max(stars)
 
-    def num_to_vnd(num_str: str) -> int:
-        return int(float(num_str.replace(",", ".")) * 1_000_000)
-
-    # Price range: "từ 1 đến 2 triệu", "1-2tr", "1.000.000-2.000.000"
-    lo, hi, is_range = _extract_price_range_from_query(q)
-    if is_range:
-        cons["min_price"] = lo
-        cons["max_price"] = hi
-        cons["explicit_price"] = True
-
-    m = re.search(r"(dưới|duoi|<=)\s*(\d+(?:[.,]\d+)?)\s*trieu", q)
+    # rating (>= 4.5 etc)
+    m = re.search(r"(?:rating|điểm|diem)\s*(?:>=|>|tu|từ)?\s*(\d+(?:\.\d+)?)", q_norm)
     if m:
-        cons["max_price"] = num_to_vnd(m.group(2))
-        cons["explicit_price"] = True
+        try:
+            cons["min_rating"] = float(m.group(1))
+        except Exception:
+            pass
 
-    m = re.search(r"(trên|tren|từ|tu|>=)\s*(\d+(?:[.,]\d+)?)\s*trieu", q)
-    if m:
-        cons["min_price"] = num_to_vnd(m.group(2))
-        cons["explicit_price"] = True
+    # price
+    mn, mx, explicit, require_price, sort_by = _parse_price_intent_from_query(q_norm, thr)
+    if mn is not None:
+        cons["min_price"] = mn
+    if mx is not None:
+        cons["max_price"] = mx
+    cons["explicit_price"] = bool(explicit) or (mn is not None or mx is not None)
+    cons["require_price"] = bool(require_price) or cons["explicit_price"]
+    if sort_by:
+        cons["sort_by"] = sort_by
 
-    # Amenities
-    a_any, a_not = _parse_amenities_from_query(q)
-    if a_any:
-        cons["amenities_any"] = a_any
-    if a_not:
-        cons["amenities_not"] = a_not
-
-    cheap_terms = ["gia re", "binh dan", "tiet kiem", "economy", "budget", "re"]
-    if not cons["explicit_price"] and any(t in q for t in cheap_terms):
-        cons["price_intent"] = "gia_re"
-        cons["require_price"] = True
-        if thr is not None:
-            cons["max_price"] = int(thr.q25)
-        cons["sort_by"] = "Giá tăng dần"
+    # amenities
+    cons["amenities_any"] = _parse_amenities_from_query(q_norm)
 
     return cons
 
 
 def _merge_constraints(base: Dict[str, Any], override: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    """Merge constraints with a few special rules:
-    - amenities_any / amenities_not: UNION (to keep adding requirements across turns)
-    - explicit_price / require_price: OR (once True, keep True)
-    - other fields: override when value is meaningful
-    """
     if not override:
         return base
-
     merged = dict(base)
-
     for k, v in override.items():
-        if k in {"amenities_any", "amenities_not"}:
-            if isinstance(v, list) and v:
-                cur = merged.get(k) or []
-                if not isinstance(cur, list):
-                    cur = []
-                merged[k] = sorted(set([str(x) for x in cur if x] + [str(x) for x in v if x]))
-            continue
-
-        if k in {"explicit_price", "require_price"}:
-            merged[k] = bool(merged.get(k)) or bool(v)
-            continue
-
         if v not in (None, [], "", 0):
             merged[k] = v
-
-    # Resolve amenity conflicts if any
-    if merged.get("amenities_any") and merged.get("amenities_not"):
-        merged["amenities_any"] = [t for t in merged["amenities_any"] if t not in set(merged["amenities_not"])]
-
     return merged
 
 
@@ -487,14 +677,6 @@ def load_hotel_dataframe() -> Tuple[pd.DataFrame, Optional[PriceThresholds]]:
     df["_district_num"] = df["district"].apply(_extract_district_num)
     df["_district_norm"] = df["district"].apply(_district_norm)
 
-    # For amenity filtering (accentless + normalized)
-    df["_amenities_text_norm"] = (
-        df.get("amenities", "").fillna("").astype(str)
-        + " " + df.get("description1", "").fillna("").astype(str)
-        + " " + df.get("reviews", "").fillna("").astype(str)
-        + " " + df.get("address", "").fillna("").astype(str)
-    ).apply(_norm_text)
-
     df["hotelname_norm"] = df["hotelname"].astype(str).str.strip().str.lower()
     df["hotelname_norm_simple"] = df["hotelname"].apply(
         lambda x: _norm_text(re.sub(r"\b(khach san|khách sạn|hotel)\b", " ", str(x)))
@@ -506,8 +688,21 @@ def load_hotel_dataframe() -> Tuple[pd.DataFrame, Optional[PriceThresholds]]:
     df["_price_mid_vnd"] = parsed.apply(lambda t: t[2])
 
     df["_price_vnd"] = pd.to_numeric(df["_price_mid_vnd"], errors="coerce")
-
     thr = _calc_price_thresholds(df["_price_vnd"])
+
+    # ✅ text để lọc tiện ích (amenities + description + reviews + address/district)
+    def _amen_text(row: pd.Series) -> str:
+        parts = [
+            row.get("amenities", ""),
+            row.get("description1", ""),
+            row.get("reviews", ""),
+            row.get("address", ""),
+            row.get("district", ""),
+        ]
+        return _norm_text(" ".join(str(p) for p in parts if p))
+
+    df["_amenities_text_norm"] = df.apply(_amen_text, axis=1)
+
     return df, thr
 
 
@@ -562,9 +757,9 @@ def lexical_topk(query: str, lex: LexicalIndex, k: int = 80) -> List[Tuple[int, 
 # =========================
 
 def _row_to_hotel(row: pd.Series, match_reason: str = "") -> Dict[str, Any]:
-    price_mid = row.get("_price_vnd")
     price_min = row.get("_price_min_vnd")
     price_max = row.get("_price_max_vnd")
+    price_mid = row.get("_price_vnd")
 
     rating = row.get("totalScore")
     star = row.get("_star_num")
@@ -652,11 +847,13 @@ def _district_name_candidates(df: pd.DataFrame) -> Dict[str, str]:
 def _apply_constraints(df: pd.DataFrame, cons: Dict[str, Any]) -> pd.DataFrame:
     mask = pd.Series(True, index=df.index, dtype=bool)
 
+    # district
     if cons.get("district_nums"):
         mask &= df["_district_num"].isin(cons["district_nums"])
     elif cons.get("district_names"):
         mask &= df["_district_norm"].isin(cons["district_names"])
 
+    # price
     hotel_min = pd.to_numeric(df["_price_min_vnd"], errors="coerce")
     hotel_max = pd.to_numeric(df["_price_max_vnd"], errors="coerce")
 
@@ -675,41 +872,23 @@ def _apply_constraints(df: pd.DataFrame, cons: Dict[str, Any]) -> pd.DataFrame:
     if cons.get("require_price") and cons.get("min_price") is None and cons.get("max_price") is None:
         mask &= hotel_min.notna() | hotel_max.notna()
 
+    # rating/star
     if cons.get("min_rating") is not None:
         mask &= pd.to_numeric(df["totalScore"], errors="coerce") >= cons["min_rating"]
     if cons.get("min_star") is not None:
         mask &= pd.to_numeric(df["_star_num"], errors="coerce") >= cons["min_star"]
 
-    # Amenities filter (OR semantics for amenities_any)
-    if cons.get("amenities_any"):
-        col = "_amenities_text_norm"
-        if col not in df.columns:
-            df[col] = (
-                df.get("amenities", "").fillna("").astype(str)
-                + " " + df.get("description1", "").fillna("").astype(str)
-                + " " + df.get("reviews", "").fillna("").astype(str)
-                + " " + df.get("address", "").fillna("").astype(str)
-            ).apply(_norm_text)
-        m_any = pd.Series(False, index=df.index, dtype=bool)
-        for t in cons["amenities_any"]:
-            tt = _norm_text(t)
-            if tt:
-                m_any |= df[col].str.contains(re.escape(tt), na=False)
-        mask &= m_any
-
-    if cons.get("amenities_not"):
-        col = "_amenities_text_norm"
-        if col not in df.columns:
-            df[col] = (
-                df.get("amenities", "").fillna("").astype(str)
-                + " " + df.get("description1", "").fillna("").astype(str)
-                + " " + df.get("reviews", "").fillna("").astype(str)
-                + " " + df.get("address", "").fillna("").astype(str)
-            ).apply(_norm_text)
-        for t in cons["amenities_not"]:
-            tt = _norm_text(t)
-            if tt:
-                mask &= ~df[col].str.contains(re.escape(tt), na=False)
+    # amenities_any (OR)
+    ams = cons.get("amenities_any") or []
+    if ams:
+        txt = df["_amenities_text_norm"].fillna("")
+        any_mask = pd.Series(False, index=df.index, dtype=bool)
+        for a in ams:
+            a_norm = _norm_text(a)
+            if not a_norm:
+                continue
+            any_mask |= txt.str.contains(a_norm, regex=False)
+        mask &= any_mask
 
     return df[mask].copy()
 
@@ -787,12 +966,25 @@ def hybrid_search_hotels(
     vector_db: FAISS,
     lex: LexicalIndex,
     top_k: int = DEFAULT_TOP_K,
-    history: Optional[List[Dict[str, Any]]] = None,
     filters: Optional[Dict[str, Any]] = None,
+    memory_constraints: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
 
-    mem_cons = _constraints_from_history(history, thr) if history else _parse_constraints("", thr)
-    cons = _merge_constraints(mem_cons, _parse_constraints(user_query, thr))
+    # merge: memory -> current query -> UI filters
+    cons = memory_constraints or {
+        "min_price": None,
+        "max_price": None,
+        "district_nums": None,
+        "district_names": None,
+        "min_rating": None,
+        "min_star": None,
+        "sort_by": "relevance",
+        "price_intent": None,
+        "explicit_price": False,
+        "require_price": False,
+        "amenities_any": [],
+    }
+    cons = _merge_constraints(cons, _parse_constraints(user_query, thr))
     cons = _merge_constraints(cons, filters)
 
     if not cons.get("district_nums"):
@@ -873,9 +1065,14 @@ def hybrid_search_hotels(
 # ✅ Deterministic list answer (fallback)
 # =========================
 
-def _compact_list_answer(hotels: List[Dict[str, Any]]) -> str:
+def _compact_list_answer(hotels: List[Dict[str, Any]], criteria_text: str = "") -> str:
     n = len(hotels)
-    lines = [f"Mình đã tìm thấy {n} lựa chọn phù hợp bên dưới:"]
+    head = f"Mình đã tìm thấy {n} lựa chọn phù hợp bên dưới"
+    if criteria_text:
+        head += f" (theo tiêu chí: {criteria_text})"
+    head += ":"
+    lines = [head]
+
     for i, h in enumerate(hotels, 1):
         name = (h.get("hotelname") or h.get("name") or "").strip()
         district = str(h.get("district") or "—").split(",")[0].strip() or "—"
@@ -893,7 +1090,7 @@ def _compact_list_answer(hotels: List[Dict[str, Any]]) -> str:
         link_txt = f" — 🔗 {detail}" if detail else ""
         lines.append(f"({i}) 🏨 {name} — 📍 {district} — 💰 {price_text}{rating_txt}{link_txt}")
 
-    lines.append("Bạn muốn lọc theo *giá*, *rating* hay *tiện ích* (hồ bơi/gần trung tâm/đậu xe)?")
+    lines.append("Bạn muốn lọc theo *giá*, *rating* hay *tiện ích* (hồ bơi/wifi/bữa sáng/gym/đậu xe)?")
     return "\n".join(lines)
 
 
@@ -902,7 +1099,6 @@ def _compact_list_answer(hotels: List[Dict[str, Any]]) -> str:
 # =========================
 
 def build_answer_chain(llm: ChatGoogleGenerativeAI):
-    # LLM vẫn có thể đếm sai, nên phía dưới sẽ có post-process + fallback
     template = """Bạn là trợ lý gợi ý khách sạn. Chỉ được dùng thông tin trong JSON, không bịa thêm.
 
 Người dùng hỏi: "{user_input}"
@@ -925,7 +1121,7 @@ QUY TẮC:
 - Nếu thiếu district: dùng "—".
 - Nếu thiếu detail_url: bỏ phần 🔗.
 - Kết thúc bằng đúng 1 câu:
-  "Bạn muốn lọc theo *giá*, *rating* hay *tiện ích* (hồ bơi/gần trung tâm/đậu xe)?"
+  "Bạn muốn lọc theo *giá*, *rating* hay *tiện ích* (hồ bơi/wifi/bữa sáng/gym/đậu xe)?"
 
 Bắt đầu trả lời:
 """
@@ -944,8 +1140,8 @@ def search_hotels_tool(
     vector_db: FAISS,
     lex: LexicalIndex,
     top_k: int = DEFAULT_TOP_K,
-    history: Optional[List[Dict[str, Any]]] = None,
     filters: Optional[Dict[str, Any]] = None,
+    memory_constraints: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     hotels = hybrid_search_hotels(
         user_query=user_query,
@@ -954,8 +1150,8 @@ def search_hotels_tool(
         vector_db=vector_db,
         lex=lex,
         top_k=top_k,
-        history=history,
         filters=filters,
+        memory_constraints=memory_constraints,
     )
     return {"tool_name": "search_hotels_tool", "query": user_query, "results": hotels}
 
@@ -971,15 +1167,15 @@ def chat_with_agent(
     df: Optional[pd.DataFrame] = None,
     thr: Optional[PriceThresholds] = None,
     lex: Optional[LexicalIndex] = None,
-    history: Optional[List[Dict[str, Any]]] = None,
     filters: Optional[Dict[str, Any]] = None,
     top_k: int = DEFAULT_TOP_K,
+    history: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     user_input = (user_input or "").strip()
     if not user_input:
         raise ValueError("user_input trống – hãy nhập câu hỏi.")
 
-    # ✅ CHỐT top_k tối đa 10 (để UI luôn consistent)
+    # ✅ CHỐT top_k tối đa 10
     try:
         top_k = int(top_k)
     except Exception:
@@ -995,6 +1191,10 @@ def chat_with_agent(
     if llm is None:
         llm = load_llm()
 
+    # ✅ memory constraints từ history
+    mem_cons = _constraints_from_history(history, thr)
+    criteria_text = _summarize_constraints(mem_cons)
+
     tool_result = search_hotels_tool(
         user_query=user_input,
         df=df,
@@ -1002,15 +1202,21 @@ def chat_with_agent(
         vector_db=vector_db,
         lex=lex,
         top_k=top_k,
-        history=history,
         filters=filters,
+        memory_constraints=mem_cons,
     )
 
     hotels = tool_result.get("results") or []
-    # ✅ cắt chắc chắn
     hotels = hotels[:top_k]
     tool_result["results"] = hotels
     expected = min(top_k, len(hotels))
+
+    # ✅ Compare mode: trả về Top 3 + bảng so sánh (không qua LLM để ổn định)
+    if _detect_compare_intent(user_input):
+        top3 = _pick_top3(hotels)
+        tool_result["results"] = top3
+        answer_text = _build_compare_markdown(top3)
+        return {"answer": answer_text, "tool_result": tool_result}
 
     hotels_json = json.dumps(hotels, ensure_ascii=False, indent=2)
 
@@ -1021,21 +1227,20 @@ def chat_with_agent(
             "hotels_json": hotels_json,
         }
     )
-
     answer_text = (answer_text or "").strip()
 
     # ✅ 1) Đè tiêu đề về đúng expected (LLM hay bịa 11/12)
     answer_text = re.sub(
         r"^Mình đã tìm thấy\s+\d+\s+lựa chọn.*$",
-        f"Mình đã tìm thấy {expected} lựa chọn phù hợp bên dưới:",
+        f"Mình đã tìm thấy {expected} lựa chọn phù hợp bên dưới" + (f" (theo tiêu chí: {criteria_text})" if criteria_text else "") + ":",
         answer_text,
         flags=re.MULTILINE,
     )
 
-    # ✅ 2) Nếu số dòng list không đúng expected -> fallback deterministic (luôn đúng)
+    # ✅ 2) Nếu số dòng list không đúng expected -> fallback deterministic
     got = len(re.findall(r"^\(\d+\)\s", answer_text, flags=re.MULTILINE))
     if expected > 0 and got != expected:
-        answer_text = _compact_list_answer(hotels[:expected])
+        answer_text = _compact_list_answer(hotels[:expected], criteria_text=criteria_text)
 
     return {"answer": answer_text, "tool_result": tool_result}
 
@@ -1057,6 +1262,10 @@ if __name__ == "__main__":
         if q.lower() in {"exit", "quit"}:
             break
 
-        result = chat_with_agent(q, llm=llm, vector_db=vector_db, df=df, thr=thr, lex=lex, top_k=DEFAULT_TOP_K)
+        # demo history
+        demo_history = [{"role": "user", "content": "gợi ý khách sạn quận 1"}]
+        result = chat_with_agent(
+            q, llm=llm, vector_db=vector_db, df=df, thr=thr, lex=lex, top_k=DEFAULT_TOP_K, history=demo_history
+        )
         print("Assistant:\n", result["answer"])
         print("-" * 60)

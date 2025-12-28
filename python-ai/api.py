@@ -69,15 +69,23 @@ async def startup():
     DF, THR = load_hotel_dataframe()
     LEX = build_lexical_index(DF, THR)
 
+
+class HistoryMessage(BaseModel):
+    role: str
+    content: str
+
+
 class ChatRequest(BaseModel):
     query: str
     top_k: Optional[int] = 10
     filters: Optional[Dict[str, Any]] = None
-    history: Optional[List[Dict[str, Any]]] = None
+    history: Optional[List[HistoryMessage]] = None
+
 
 @app.get("/health")
 async def health():
     return {"ok": True, "import_error": str(_IMPORT_ERROR) if _IMPORT_ERROR else None}
+
 
 @app.post("/api/chat")
 async def api_chat(req: ChatRequest):
@@ -92,6 +100,11 @@ async def api_chat(req: ChatRequest):
     except Exception:
         top_k = 10
 
+    history = None
+    if req.history:
+        # convert pydantic models to dicts with keys role/content
+        history = [{"role": m.role, "content": m.content} for m in req.history]
+
     result = chat_with_agent(
         user_input=req.query,
         llm=LLM,
@@ -100,7 +113,7 @@ async def api_chat(req: ChatRequest):
         thr=THR,
         lex=LEX,
         filters=req.filters,
-        history=req.history,
+        history=history,
         top_k=top_k,
     )
 
