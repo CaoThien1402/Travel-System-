@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
 import numpy as np
 import pandas as pd
@@ -73,6 +73,7 @@ class ChatRequest(BaseModel):
     query: str
     top_k: Optional[int] = 10
     filters: Optional[Dict[str, Any]] = None
+    history: Optional[List[Dict[str, Any]]] = None
 
 @app.get("/health")
 async def health():
@@ -99,6 +100,7 @@ async def api_chat(req: ChatRequest):
         thr=THR,
         lex=LEX,
         filters=req.filters,
+        history=req.history,
         top_k=top_k,
     )
 
