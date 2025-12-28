@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -21,7 +22,6 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import Navbar from '@/components/Navbar';
-import Footer from '@/components/Footer';
 import { useAuth } from '@/contexts/AuthContext';
 
 interface Message {
@@ -264,13 +264,22 @@ const SmartSearch = () => {
     if (conversations.length > 0) localStorage.setItem(STORAGE_KEY, JSON.stringify(conversations));
   }, [conversations]);
 
-  // Auto scroll to bottom
-  useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [conversations, currentConversationId]);
-
   const currentConversation = conversations.find((c) => c.id === currentConversationId);
   const messages = currentConversation?.messages || [];
+
+  // Auto scroll to bottom - find the actual scrollable viewport inside ScrollArea
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (scrollRef.current) {
+        // ScrollArea uses a viewport element inside, need to find it
+        const viewport = scrollRef.current.querySelector('[data-radix-scroll-area-viewport]');
+        if (viewport) {
+          viewport.scrollTop = viewport.scrollHeight;
+        }
+      }
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [conversations, currentConversationId, messages.length]);
 
   const createNewConversation = () => {
     const newConv: Conversation = {
@@ -432,7 +441,7 @@ const SmartSearch = () => {
         {/* Sidebar */}
         <div
           className={cn(
-            'fixed lg:relative inset-y-0 left-0 z-50 lg:z-auto w-72 bg-gray-900 text-white flex flex-col transition-transform duration-300 lg:translate-x-0 pt-20 lg:pt-0',
+            'fixed lg:sticky inset-y-0 left-0 lg:inset-y-auto lg:top-20 lg:h-[calc(100vh-5rem)] z-50 lg:z-auto w-72 bg-gray-900 text-white flex flex-col transition-transform duration-300 lg:translate-x-0 pt-20 lg:pt-0',
             mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'
           )}
         >
@@ -521,7 +530,7 @@ const SmartSearch = () => {
                 </p>
               </div>
             ) : null}
-
+    
             {/* Messages Area */}
             {currentConversationId && (
               <ScrollArea className="flex-1 py-4" ref={scrollRef as any}>
@@ -661,8 +670,6 @@ const SmartSearch = () => {
           </div>
         </div>
       </main>
-
-      <Footer />
     </div>
   );
 };
