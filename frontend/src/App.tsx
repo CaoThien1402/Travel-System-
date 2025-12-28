@@ -65,6 +65,7 @@ function App() {
               <Route path="/properties/:id" element={<PropertyDetail />} />
               <Route path="/about" element={<About />} />
               <Route path="/smart-search" element={<SmartSearch />} />
+              <Route path="/smart-search/:id" element={<SmartSearch />} />
               <Route path="/auth/callback" element={<AuthCallback />} />
 
               {/* ================= PROTECTED ROUTES ================= */}

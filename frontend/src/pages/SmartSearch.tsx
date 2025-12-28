@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   Send,
   Loader2,
@@ -85,6 +85,21 @@ interface Conversation {
 
 const STORAGE_KEY = 'smart_search_conversations';
 const TOP_K = 10;
+
+const buildInitialBotMessage = (): Message => ({
+  id: '1',
+  text: 'Xin chào! Tôi là trợ lý AI của 3T2M1Stay. Hãy cho tôi biết bạn muốn tìm khách sạn ở đâu, ngân sách bao nhiêu/đêm và cần tiện ích gì nhé.',
+  sender: 'bot',
+  timestamp: new Date(),
+});
+
+const buildConversation = (id: string): Conversation => ({
+  id,
+  title: 'Cuộc trò chuyện mới',
+  messages: [buildInitialBotMessage()],
+  createdAt: new Date(),
+  updatedAt: new Date(),
+});
 
 // ------- helpers -------
 const pickHotelName = (h: HotelCard) => h.hotelname || h.name || 'Khách sạn';
@@ -228,12 +243,14 @@ function HotelResultCard({
 
 const SmartSearch = () => {
   const navigate = useNavigate();
+  const { id: routeId } = useParams();
   const { user } = useAuth();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Load conversations from localStorage
@@ -252,16 +269,43 @@ const SmartSearch = () => {
           })),
         }));
         setConversations(convs);
-        if (convs.length > 0) setCurrentConversationId(convs[0].id);
       } catch (e) {
         console.error('Error loading conversations:', e);
       }
     }
+    setHasLoaded(true);
   }, []);
+
+  // Sync current conversation with route
+  useEffect(() => {
+    if (!hasLoaded) return;
+
+    if (routeId) {
+      const exists = conversations.some((c) => c.id === routeId);
+      if (!exists) {
+        const newConv = buildConversation(routeId);
+        setConversations((prev) => [newConv, ...prev]);
+      }
+      if (currentConversationId !== routeId) setCurrentConversationId(routeId);
+      return;
+    }
+
+    if (conversations.length > 0) {
+      const fallbackId = conversations[0].id;
+      if (currentConversationId !== fallbackId) setCurrentConversationId(fallbackId);
+      navigate(`/smart-search/${fallbackId}`, { replace: true });
+    } else if (currentConversationId !== null) {
+      setCurrentConversationId(null);
+    }
+  }, [routeId, conversations, hasLoaded, currentConversationId, navigate]);
 
   // Save conversations to localStorage
   useEffect(() => {
-    if (conversations.length > 0) localStorage.setItem(STORAGE_KEY, JSON.stringify(conversations));
+    if (conversations.length > 0) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(conversations));
+    } else {
+      localStorage.removeItem(STORAGE_KEY);
+    }
   }, [conversations]);
 
   const currentConversation = conversations.find((c) => c.id === currentConversationId);
@@ -282,36 +326,32 @@ const SmartSearch = () => {
   }, [conversations, currentConversationId, messages.length]);
 
   const createNewConversation = () => {
-    const newConv: Conversation = {
-      id: Date.now().toString(),
-      title: 'Cuộc trò chuyện mới',
-      messages: [
-        {
-          id: '1',
-          text: 'Xin chào! Tôi là trợ lý AI của 3T2M1Stay. Hãy cho tôi biết bạn muốn tìm khách sạn ở đâu, ngân sách bao nhiêu/đêm và cần tiện ích gì nhé.',
-          sender: 'bot',
-          timestamp: new Date(),
-        },
-      ],
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
+    const newId = Date.now().toString();
+    const newConv = buildConversation(newId);
     setConversations((prev) => [newConv, ...prev]);
-    setCurrentConversationId(newConv.id);
+    setCurrentConversationId(newId);
     setMobileSidebarOpen(false);
+    navigate(`/smart-search/${newId}`);
   };
 
   const deleteConversation = (id: string) => {
-    setConversations((prev) => prev.filter((c) => c.id !== id));
+    const remaining = conversations.filter((c) => c.id !== id);
+    setConversations(remaining);
     if (currentConversationId === id) {
-      const remaining = conversations.filter((c) => c.id !== id);
-      setCurrentConversationId(remaining.length > 0 ? remaining[0].id : null);
+      const nextId = remaining.length > 0 ? remaining[0].id : null;
+      setCurrentConversationId(nextId);
+      if (nextId) {
+        navigate(`/smart-search/${nextId}`, { replace: true });
+      } else {
+        navigate('/smart-search', { replace: true });
+      }
     }
   };
 
   const selectConversation = (id: string) => {
     setCurrentConversationId(id);
     setMobileSidebarOpen(false);
+    navigate(`/smart-search/${id}`);
   };
 
   const updateConversationTitle = (convId: string, firstUserMessage: string) => {
