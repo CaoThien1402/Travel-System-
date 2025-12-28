@@ -47,6 +47,7 @@ interface Hotel {
   reviewsCount?: number;
   totalScore?: number;
   searchString?: string;
+  amenities?: string[];
 }
 
 interface FilterOptions {
@@ -720,62 +721,87 @@ const HotelSearch = () => {
                   <div className="w-full px-4">
                     <table className="w-full table-fixed">
                       <tbody className="w-full">
-                        {filteredHotels.map((hotel) => (
-                          <tr key={hotel.id} className="w-full">
-                            <td className="w-full p-0 pb-4 border-none block sm:table-cell"> 
-                              <div 
-                                className={`
-                                  w-full bg-white rounded-lg p-4 cursor-pointer transition-all hover:shadow-lg border-2
-                                  ${selectedHotel?.id === hotel.id ? 'border-primary shadow-lg' : 'border-transparent'}
-                                `}
-                                onClick={() => {
-                                  navigate(`/properties/${hotel.id}`);
-                                  setShowMobileList(false);
-                                }}
-                              >
-                                <div className="flex w-full gap-4">
-                                  <div className="w-24 h-24 sm:w-32 sm:h-32 flex-shrink-0 rounded-lg overflow-hidden bg-gray-200 relative">
-                                    <HotelImage src={hotel.imageUrl} alt={hotel.hotelname} />
-                                  </div>
+                        {filteredHotels.map((hotel) => {
+                          const amenities = Array.isArray(hotel.amenities)
+                            ? hotel.amenities.map((amenity) => String(amenity).trim()).filter(Boolean)
+                            : [];
+                          const visibleAmenities = amenities.slice(0, 3);
+                          const extraAmenities = amenities.length - visibleAmenities.length;
 
-                                  <div className="flex-1 min-w-0 flex flex-col justify-between">
-                                    <div>
-                                      <h3 className="font-semibold text-lg mb-1 truncate">
-                                        {hotel.hotelname}
-                                      </h3>
-                                      <div className="flex items-center gap-2 mb-2">
-                                        <div className="text-yellow-500 text-xs sm:text-sm">
-                                          {'⭐'.repeat(Math.floor(hotel.star))}
-                                        </div>
-                                        {hotel.reviewsCount && (
-                                          <span className="text-xs text-gray-500 truncate">
-                                            ({hotel.reviewsCount} đánh giá)
-                                          </span>
-                                        )}
-                                      </div>
-                                      <p className="text-sm text-gray-600 mb-2 line-clamp-1">
-                                        <MapPin className="w-3 h-3 inline mr-1" />
-                                        {hotel.district}
-                                      </p>
+                          return (
+                            <tr key={hotel.id} className="w-full">
+                              <td className="w-full p-0 pb-4 border-none block sm:table-cell"> 
+                                <div 
+                                  className={`
+                                    w-full bg-white rounded-lg p-4 cursor-pointer transition-all hover:shadow-lg border-2
+                                    ${selectedHotel?.id === hotel.id ? 'border-primary shadow-lg' : 'border-transparent'}
+                                  `}
+                                  onClick={() => {
+                                    navigate(`/properties/${hotel.id}`);
+                                    setShowMobileList(false);
+                                  }}
+                                >
+                                  <div className="flex w-full gap-4">
+                                    <div className="w-24 h-24 sm:w-32 sm:h-32 flex-shrink-0 rounded-lg overflow-hidden bg-gray-200 relative">
+                                      <HotelImage src={hotel.imageUrl} alt={hotel.hotelname} />
                                     </div>
-                                    
-                                    <div className="flex items-end justify-between mt-1">
+
+                                    <div className="flex-1 min-w-0 flex flex-col justify-between">
                                       <div>
-                                        <div className="text-[10px] sm:text-xs text-gray-500">Giá từ</div>
-                                        <div className="text-lg sm:text-2xl font-bold text-primary">
-                                          VND {hotel.price.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".")}
+                                        <h3 className="font-semibold text-lg mb-1 truncate">
+                                          {hotel.hotelname}
+                                        </h3>
+                                        <div className="flex items-center gap-2 mb-2">
+                                          <div className="text-yellow-500 text-xs sm:text-sm">
+                                            {'⭐'.repeat(Math.floor(hotel.star))}
+                                          </div>
+                                          {hotel.reviewsCount && (
+                                            <span className="text-xs text-gray-500 truncate">
+                                              ({hotel.reviewsCount} đánh giá)
+                                            </span>
+                                          )}
                                         </div>
+                                        <p className="text-sm text-gray-600 mb-2 line-clamp-1">
+                                          <MapPin className="w-3 h-3 inline mr-1" />
+                                          {hotel.district}
+                                        </p>
+                                        {visibleAmenities.length ? (
+                                          <div className="flex flex-wrap gap-1.5 mb-2">
+                                            {visibleAmenities.map((amenity, idx) => (
+                                              <span
+                                                key={`${hotel.id}-amenity-${idx}`}
+                                                className="px-2 py-0.5 rounded-full text-[10px] sm:text-xs bg-gray-100 text-gray-700 border border-gray-200 truncate"
+                                              >
+                                                {amenity}
+                                              </span>
+                                            ))}
+                                            {extraAmenities > 0 && (
+                                              <span className="px-2 py-0.5 rounded-full text-[10px] sm:text-xs bg-gray-50 text-gray-500 border border-gray-200">
+                                                +{extraAmenities}
+                                              </span>
+                                            )}
+                                          </div>
+                                        ) : null}
                                       </div>
-                                      <Button size="sm" className="bg-primary hover:bg-primary/90 shrink-0 ml-2">
-                                        Xem
-                                      </Button>
+                                      
+                                      <div className="flex items-end justify-between mt-1">
+                                        <div>
+                                          <div className="text-[10px] sm:text-xs text-gray-500">Giá từ</div>
+                                          <div className="text-lg sm:text-2xl font-bold text-primary">
+                                            VND {hotel.price.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".")}
+                                          </div>
+                                        </div>
+                                        <Button size="sm" className="bg-primary hover:bg-primary/90 shrink-0 ml-2">
+                                          Xem
+                                        </Button>
+                                      </div>
                                     </div>
                                   </div>
                                 </div>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
