@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react';
-import { MapPin, Star, DollarSign, Filter, Search, Hotel as HotelIcon, User, LogOut, Navigation, LayoutDashboard, Heart } from 'lucide-react';
+import { Map, MapPin, Star, DollarSign, Filter, Search, Hotel as HotelIcon, User, LogOut, Navigation, LayoutDashboard, Heart } from 'lucide-react';
 import { Menu, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Slider } from '@/components/ui/slider';
-import { Toggle } from '@/components/ui/toggle';
 import { Link, useNavigate } from 'react-router-dom';
 import HotelMap from '@/components/HotelMap';
 import { useAuth } from '@/contexts/AuthContext';
@@ -114,6 +113,7 @@ const HotelSearch = () => {
   const [selectedPriceRange, setSelectedPriceRange] = useState<string>('all');
   const [showFilters, setShowFilters] = useState(false);
   const [showMobileList, setShowMobileList] = useState(false);
+  const [showMap, setShowMap] = useState(false);
   const [useLocationFilter, setUseLocationFilter] = useState(false);
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
   const maxDistance = 3; // Fixed at 3km
@@ -266,6 +266,14 @@ const HotelSearch = () => {
     }
   };
 
+  const toggleMapVisibility = () => {
+    setShowMap((prev) => {
+      const next = !prev;
+      if (!next) setShowMobileList(false);
+      return next;
+    });
+  };
+
   // Auto-apply filter when location changes
   useEffect(() => {
     if (useLocationFilter && userLocation && hotels.length > 0) {
@@ -382,6 +390,14 @@ const HotelSearch = () => {
     setFilteredHotels(filtered);
     setMapHotels(getFeaturedHotelsForMap(filtered, 30));
   };
+
+  const listPanelClass = showMap
+    ? `
+      absolute inset-y-0 left-0 z-[9995] w-[85%] sm:w-[400px] bg-white shadow-2xl transform transition-transform duration-300 ease-in-out
+      ${showMobileList ? 'translate-x-0' : '-translate-x-full'}
+      lg:relative lg:translate-x-0 lg:w-1/2 lg:shadow-none lg:border-r lg:bg-gray-50 lg:block lg:z-auto
+    `
+    : 'relative w-full bg-gray-50';
 
   return (
     <div className="h-screen flex flex-col">
@@ -608,6 +624,27 @@ const HotelSearch = () => {
               </button>
             </div>
 
+            <div className="flex items-center gap-2 h-12 px-4 border rounded-lg bg-white">
+              <Map className="w-4 h-4 text-gray-600" />
+              <span className="hidden sm:inline text-sm font-medium text-gray-700">Bản đồ</span>
+              <button
+                onClick={toggleMapVisibility}
+                className={`
+                  relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2
+                  ${showMap ? 'bg-sky-500' : 'bg-gray-300'}
+                `}
+                aria-pressed={showMap}
+                aria-label={showMap ? 'Tắt bản đồ' : 'Bật bản đồ'}
+              >
+                <span
+                  className={`
+                    inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-lg
+                    ${showMap ? 'translate-x-6' : 'translate-x-1'}
+                  `}
+                />
+              </button>
+            </div>
+
             <Button 
               onClick={handleSearch} 
               disabled={isSearching}
@@ -631,26 +668,24 @@ const HotelSearch = () => {
       </div>
       
       <div className="relative flex flex-row h-screen w-screen overflow-hidden bg-white">
-        <button 
-          onClick={() => setShowMobileList(!showMobileList)}
-          className="lg:hidden absolute top-4 left-4 z-[9999] p-3 bg-white text-gray-700 rounded-full shadow-xl border border-gray-200 hover:bg-gray-50 active:scale-95 transition-all"
-          aria-label="Toggle Hotel List"
-        >
-          {showMobileList ? <X size={24} /> : <Menu size={24} />}
-        </button>
+        {showMap && (
+          <button 
+            onClick={() => setShowMobileList(!showMobileList)}
+            className="lg:hidden absolute top-4 left-4 z-[9999] p-3 bg-white text-gray-700 rounded-full shadow-xl border border-gray-200 hover:bg-gray-50 active:scale-95 transition-all"
+            aria-label="Toggle Hotel List"
+          >
+            {showMobileList ? <X size={24} /> : <Menu size={24} />}
+          </button>
+        )}
 
-        {showMobileList && (
+        {showMap && showMobileList && (
           <div 
             className="lg:hidden fixed inset-0 z-[9990] bg-black/50 backdrop-blur-sm"
             onClick={() => setShowMobileList(false)}
           />
         )}
 
-        <div className={`
-          absolute inset-y-0 left-0 z-[9995] w-[85%] sm:w-[400px] bg-white shadow-2xl transform transition-transform duration-300 ease-in-out
-          ${showMobileList ? 'translate-x-0' : '-translate-x-full'}
-          lg:relative lg:translate-x-0 lg:w-1/2 lg:shadow-none lg:border-r lg:bg-gray-50 lg:block lg:z-auto
-        `}>
+        <div className={listPanelClass}>
           <div className="flex flex-col h-full">
             <div className="px-4 pb-2 pt-20 lg:pt-4 text-sm text-gray-600">
               {isSearching ? (
@@ -750,29 +785,31 @@ const HotelSearch = () => {
           </div>
         </div>
 
-        <div className="w-full h-full lg:w-1/2 relative bg-gray-100">
-          <div className="h-full w-full relative">
-            {mapHotels.length < filteredHotels.length && (
-              <div className="hidden lg:block absolute top-6 left-6 right-6 z-10 bg-white/95 backdrop-blur-sm rounded-lg shadow-md p-3 text-sm max-w-md mx-auto pointer-events-none">
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-700">
-                    Hiển thị <strong>{mapHotels.length}</strong> trong <strong>{filteredHotels.length}</strong> khách sạn
-                  </span>
-                  <span className="text-xs text-gray-500 ml-2">(Đánh giá cao nhất)</span>
+        {showMap && (
+          <div className="w-full h-full lg:w-1/2 relative bg-gray-100">
+            <div className="h-full w-full relative">
+              {mapHotels.length < filteredHotels.length && (
+                <div className="hidden lg:block absolute top-6 left-6 right-6 z-10 bg-white/95 backdrop-blur-sm rounded-lg shadow-md p-3 text-sm max-w-md mx-auto pointer-events-none">
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-700">
+                      Hiển thị <strong>{mapHotels.length}</strong> trong <strong>{filteredHotels.length}</strong> khách sạn
+                    </span>
+                    <span className="text-xs text-gray-500 ml-2">(Đánh giá cao nhất)</span>
+                  </div>
                 </div>
-              </div>
-            )}
-            
-            <HotelMap
-              hotels={mapHotels}
-              onMarkerClick={(hotel) => {
-                setSelectedHotel(hotel);
-                setShowMobileList(true);
-              }}
-              userLocation={useLocationFilter ? userLocation : null}
-            />
+              )}
+              
+              <HotelMap
+                hotels={mapHotels}
+                onMarkerClick={(hotel) => {
+                  setSelectedHotel(hotel);
+                  setShowMobileList(true);
+                }}
+                userLocation={useLocationFilter ? userLocation : null}
+              />
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
