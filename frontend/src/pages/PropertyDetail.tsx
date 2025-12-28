@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
@@ -540,10 +541,10 @@ export default function PropertyDetail() {
     rank,
     district,
     lat,
-    lon,
+    lng,
   } = hotel;
 
-  const hasCoordinates = lat !== 0 && lon !== 0;
+  const hasCoordinates = lat !== 0 && lng !== 0;
 
   return (
     <div className="bg-background min-h-screen">
@@ -905,6 +906,8 @@ export default function PropertyDetail() {
                           type="button"
                           onClick={() => setReviewRating(star)}
                           className="transition-colors"
+                          aria-label={`Đánh giá ${star} sao`}
+                          title={`Đánh giá ${star} sao`}
                         >
                           <Star
                             className={cn(

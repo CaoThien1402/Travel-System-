@@ -14,7 +14,7 @@ const Footer = () => {
               <span className="text-xl font-bold text-foreground">3T2M1Stay</span>
             </div>
             <p className="text-sm text-muted-foreground mb-4">
-              Nền tảng đặt phòng khách sạn và homestay hàng đầu Việt Nam. Tìm kiếm, so sánh và đặt phòng dễ dàng.
+              Nền tảng đặt phòng khách sạn và homestay hàng đầu Hồ Chí Minh. Hỗ trợ tìm kiếm, so sánh và đưa ra lựa chọn dễ dàng.
             </p>
           </div>
 
@@ -45,49 +45,22 @@ const Footer = () => {
             </ul>
           </div>
 
-          {/* Categories */}
-          <div>
-            <h3 className="font-semibold text-foreground mb-4">Danh mục</h3>
-            <ul className="space-y-2">
-              <li>
-                <a href="#" className="text-sm text-muted-foreground hover:text-primary transition-colors">
-                  Khách sạn
-                </a>
-              </li>
-              <li>
-                <a href="#" className="text-sm text-muted-foreground hover:text-primary transition-colors">
-                  Homestay
-                </a>
-              </li>
-              <li>
-                <a href="#" className="text-sm text-muted-foreground hover:text-primary transition-colors">
-                  Resort
-                </a>
-              </li>
-              <li>
-                <a href="#" className="text-sm text-muted-foreground hover:text-primary transition-colors">
-                  Biệt thự
-                </a>
-              </li>
-            </ul>
-          </div>
-
           {/* Contact */}
           <div>
             <h3 className="font-semibold text-foreground mb-4">Liên hệ</h3>
             <ul className="space-y-3">
               <li className="flex items-start gap-2">
                 <Mail className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
-                <span className="text-sm text-muted-foreground">support@3t2m1stay.vn</span>
+                <span className="text-sm text-muted-foreground">support@3T2M1STAY.vn</span>
               </li>
               <li className="flex items-start gap-2">
                 <Phone className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
-                <span className="text-sm text-muted-foreground">1900 1234</span>
+                <span className="text-sm text-muted-foreground">0123456789</span>
               </li>
               <li className="flex items-start gap-2">
                 <MapPin className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
                 <span className="text-sm text-muted-foreground">
-                  123 Đường ABC, Quận 1, TP.HCM
+                  227 Nguyễn Văn Cừ, Phường Chợ Quán, TP.HCM
                 </span>
               </li>
             </ul>
@@ -96,7 +69,7 @@ const Footer = () => {
 
         <div className="mt-12 pt-8 border-t border-border text-center">
           <p className="text-sm text-muted-foreground">
-            © 2024 3T2M1Stay. Tất cả quyền được bảo lưu.
+            © 2025 3T2M1Stay. Tất cả quyền được bảo lưu.
           </p>
         </div>
       </div>

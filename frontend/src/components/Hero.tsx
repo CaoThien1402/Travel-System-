@@ -188,11 +188,11 @@ const Hero = () => {
         {/* Stats */}
         <div className="grid grid-cols-3 gap-4 md:gap-8 max-w-3xl mx-auto mt-12 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-300">
           <div className="text-center">
-            <div className="text-3xl md:text-4xl font-bold text-white mb-1">10,000+</div>
+            <div className="text-3xl md:text-4xl font-bold text-white mb-1">3,000+</div>
             <div className="text-sm md:text-base text-white/80">Khách sạn</div>
           </div>
           <div className="text-center">
-            <div className="text-3xl md:text-4xl font-bold text-white mb-1">50,000+</div>
+            <div className="text-3xl md:text-4xl font-bold text-white mb-1">6,000+</div>
             <div className="text-sm md:text-base text-white/80">Đánh giá</div>
           </div>
           <div className="text-center">
