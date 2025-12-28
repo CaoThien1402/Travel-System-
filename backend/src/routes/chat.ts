@@ -256,7 +256,7 @@ function buildReason(h: any): string {
 // POST /api/chat
 router.post('/chat', async (req: Request, res: Response) => {
   try {
-    const { message, top_k, filters } = req.body;
+    const { message, top_k, filters, history } = req.body;
 
     const k = Number.isFinite(Number(top_k)) ? Math.max(1, Math.min(50, Number(top_k))) : 10;
 
@@ -273,6 +273,7 @@ router.post('/chat', async (req: Request, res: Response) => {
         query: message,
         top_k: k,
         filters: filters || null,
+        history: history || null,
       }),
     });
 

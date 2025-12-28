@@ -230,6 +230,116 @@ def _price_bucket(price_vnd: Optional[float], thr: Optional[PriceThresholds]) ->
     return "luxury"
 
 
+
+
+# =========================
+# MEMORY + EXTRA PARSERS (district/price/amenities across turns)
+# =========================
+
+# Canonical terms are already accentless + normalized to match _amenities_text_norm
+_AMENITY_RULES: List[Tuple[str, List[str]]] = [
+    ("ho boi", [r"\bho\s*boi\b", r"\bpool\b"]),
+    ("wifi", [r"\bwifi\b", r"\bwi\s*fi\b", r"\binternet\b"]),
+    ("bua sang", [r"\bbua\s*sang\b", r"\bbreakfast\b"]),
+    ("dau xe", [r"\bdau\s*xe\b", r"\bparking\b", r"\bbai\s*do\b"]),
+    ("gym", [r"\bgym\b", r"\bfitness\b", r"\bphong\s*gym\b", r"\bphong\s*tap\b"]),
+    ("spa", [r"\bspa\b", r"\bmassage\b"]),
+    ("trung tam", [r"\bgan\s*trung\s*tam\b", r"\btrung\s*tam\b", r"\bdowntown\b", r"\bcenter\b"]),
+    ("san bay", [r"\bgan\s*san\s*bay\b", r"\bsan\s*bay\b", r"\bairport\b"]),
+]
+
+_NEGATION_HEAD = r"(?:khong\s*can|khong\s*muon|khong|ko|k|bo|loai\s*bo|loai)"
+
+
+def _extract_price_range_from_query(q_norm: str) -> Tuple[Optional[int], Optional[int], bool]:
+    """Return (min_vnd, max_vnd, explicit) if query expresses a range like:
+    - 'tu 1 den 2 trieu', '1-2 tr', '1~2 trieu', '1000000-2000000'
+    """
+    qn = q_norm
+
+    # 1) Range with 'trieu/tr/m'
+    m = re.search(
+        r"(?:\btu\b\s*)?(\d+(?:[\.,]\d+)?)\s*(?:tr|trieu|million|m)\s*(?:den|toi|~|-)\s*(\d+(?:[\.,]\d+)?)\s*(?:tr|trieu|million|m)\b",
+        qn,
+    )
+    if m:
+        a = _parse_price_number(m.group(1) + " trieu")
+        b = _parse_price_number(m.group(2) + " trieu")
+        if a is not None or b is not None:
+            lo, hi = (a, b) if (a or 0) <= (b or 0) else (b, a)
+            return lo, hi, True
+
+    # 2) Range where only the 2nd number carries unit, ex: "tu 1 den 2 trieu"
+    m = re.search(
+        r"(?:\btu\b\s*)?(\d+(?:[\.,]\d+)?)\s*(?:den|toi|~|-)\s*(\d+(?:[\.,]\d+)?)\s*(?:tr|trieu|million|m)\b",
+        qn,
+    )
+    if m:
+        a = _parse_price_number(m.group(1) + " trieu")
+        b = _parse_price_number(m.group(2) + " trieu")
+        if a is not None or b is not None:
+            lo, hi = (a, b) if (a or 0) <= (b or 0) else (b, a)
+            return lo, hi, True
+
+    # 3) Raw VND digits: "1.000.000 - 2.000.000"
+    m = re.search(r"(\d[\d\.,]{4,})\s*(?:den|toi|~|-)\s*(\d[\d\.,]{4,})\b", qn)
+    if m:
+        a = _parse_price_number(m.group(1))
+        b = _parse_price_number(m.group(2))
+        if a is not None or b is not None:
+            lo, hi = (a, b) if (a or 0) <= (b or 0) else (b, a)
+            return lo, hi, True
+
+    return None, None, False
+
+
+def _parse_amenities_from_query(q_norm: str) -> Tuple[List[str], List[str]]:
+    """Return (amenities_any, amenities_not) from normalized query."""
+    any_terms: List[str] = []
+    not_terms: List[str] = []
+    qn = _norm_text(q_norm)
+
+    for canon, patterns in _AMENITY_RULES:
+        hit = any(re.search(p, qn) for p in patterns)
+        if not hit:
+            continue
+
+        # Detect negation up to 3 words before canonical term
+        neg = re.search(_NEGATION_HEAD + r"(?:\s+\w+){0,3}\s+" + re.escape(canon), qn)
+        if neg:
+            not_terms.append(canon)
+        else:
+            any_terms.append(canon)
+
+    # de-dup and resolve conflicts
+    any_terms = sorted(set(any_terms))
+    not_terms = sorted(set(not_terms))
+    any_terms = [t for t in any_terms if t not in not_terms]
+    return any_terms, not_terms
+
+
+def _constraints_from_history(history: Any, thr: Optional[PriceThresholds], max_user_turns: int = 6) -> Dict[str, Any]:
+    """Build conversation memory from previous user turns."""
+    base = _parse_constraints("", thr)
+    if not history:
+        return base
+
+    user_texts: List[str] = []
+    for h in history:
+        if not isinstance(h, dict):
+            continue
+        role = (h.get("role") or h.get("sender") or "").lower()
+        if role in {"user", "human"}:
+            c = h.get("content") or h.get("text") or ""
+            if isinstance(c, str) and c.strip():
+                user_texts.append(c.strip())
+
+    user_texts = user_texts[-max_user_turns:]
+    mem = base
+    for t in user_texts:
+        mem = _merge_constraints(mem, _parse_constraints(t, thr))
+    return mem
+
 def _parse_constraints(query: str, thr: Optional[PriceThresholds]) -> Dict[str, Any]:
     """Parse điều kiện từ câu hỏi + hiểu intent 'giá rẻ' theo phân phối dữ liệu."""
     q_raw = query or ""
@@ -246,6 +356,8 @@ def _parse_constraints(query: str, thr: Optional[PriceThresholds]) -> Dict[str, 
         "price_intent": None,
         "explicit_price": False,
         "require_price": False,
+        "amenities_any": [],
+        "amenities_not": [],
     }
 
     nums = set(int(m.group(2)) for m in re.finditer(r"(quận|quan|district)\s*(\d+)", q))
@@ -263,15 +375,29 @@ def _parse_constraints(query: str, thr: Optional[PriceThresholds]) -> Dict[str, 
     def num_to_vnd(num_str: str) -> int:
         return int(float(num_str.replace(",", ".")) * 1_000_000)
 
-    m = re.search(r"(dưới|duoi|<=)\s*(\d+(?:[.,]\d+)?)\s*triệu", q)
+    # Price range: "từ 1 đến 2 triệu", "1-2tr", "1.000.000-2.000.000"
+    lo, hi, is_range = _extract_price_range_from_query(q)
+    if is_range:
+        cons["min_price"] = lo
+        cons["max_price"] = hi
+        cons["explicit_price"] = True
+
+    m = re.search(r"(dưới|duoi|<=)\s*(\d+(?:[.,]\d+)?)\s*trieu", q)
     if m:
         cons["max_price"] = num_to_vnd(m.group(2))
         cons["explicit_price"] = True
 
-    m = re.search(r"(trên|tren|từ|tu|>=)\s*(\d+(?:[.,]\d+)?)\s*triệu", q)
+    m = re.search(r"(trên|tren|từ|tu|>=)\s*(\d+(?:[.,]\d+)?)\s*trieu", q)
     if m:
         cons["min_price"] = num_to_vnd(m.group(2))
         cons["explicit_price"] = True
+
+    # Amenities
+    a_any, a_not = _parse_amenities_from_query(q)
+    if a_any:
+        cons["amenities_any"] = a_any
+    if a_not:
+        cons["amenities_not"] = a_not
 
     cheap_terms = ["gia re", "binh dan", "tiet kiem", "economy", "budget", "re"]
     if not cons["explicit_price"] and any(t in q for t in cheap_terms):
@@ -285,12 +411,36 @@ def _parse_constraints(query: str, thr: Optional[PriceThresholds]) -> Dict[str, 
 
 
 def _merge_constraints(base: Dict[str, Any], override: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Merge constraints with a few special rules:
+    - amenities_any / amenities_not: UNION (to keep adding requirements across turns)
+    - explicit_price / require_price: OR (once True, keep True)
+    - other fields: override when value is meaningful
+    """
     if not override:
         return base
+
     merged = dict(base)
+
     for k, v in override.items():
+        if k in {"amenities_any", "amenities_not"}:
+            if isinstance(v, list) and v:
+                cur = merged.get(k) or []
+                if not isinstance(cur, list):
+                    cur = []
+                merged[k] = sorted(set([str(x) for x in cur if x] + [str(x) for x in v if x]))
+            continue
+
+        if k in {"explicit_price", "require_price"}:
+            merged[k] = bool(merged.get(k)) or bool(v)
+            continue
+
         if v not in (None, [], "", 0):
             merged[k] = v
+
+    # Resolve amenity conflicts if any
+    if merged.get("amenities_any") and merged.get("amenities_not"):
+        merged["amenities_any"] = [t for t in merged["amenities_any"] if t not in set(merged["amenities_not"])]
+
     return merged
 
 
@@ -336,6 +486,14 @@ def load_hotel_dataframe() -> Tuple[pd.DataFrame, Optional[PriceThresholds]]:
     df["_star_num"] = df["star"].apply(_extract_star_from_row)
     df["_district_num"] = df["district"].apply(_extract_district_num)
     df["_district_norm"] = df["district"].apply(_district_norm)
+
+    # For amenity filtering (accentless + normalized)
+    df["_amenities_text_norm"] = (
+        df.get("amenities", "").fillna("").astype(str)
+        + " " + df.get("description1", "").fillna("").astype(str)
+        + " " + df.get("reviews", "").fillna("").astype(str)
+        + " " + df.get("address", "").fillna("").astype(str)
+    ).apply(_norm_text)
 
     df["hotelname_norm"] = df["hotelname"].astype(str).str.strip().str.lower()
     df["hotelname_norm_simple"] = df["hotelname"].apply(
@@ -522,6 +680,37 @@ def _apply_constraints(df: pd.DataFrame, cons: Dict[str, Any]) -> pd.DataFrame:
     if cons.get("min_star") is not None:
         mask &= pd.to_numeric(df["_star_num"], errors="coerce") >= cons["min_star"]
 
+    # Amenities filter (OR semantics for amenities_any)
+    if cons.get("amenities_any"):
+        col = "_amenities_text_norm"
+        if col not in df.columns:
+            df[col] = (
+                df.get("amenities", "").fillna("").astype(str)
+                + " " + df.get("description1", "").fillna("").astype(str)
+                + " " + df.get("reviews", "").fillna("").astype(str)
+                + " " + df.get("address", "").fillna("").astype(str)
+            ).apply(_norm_text)
+        m_any = pd.Series(False, index=df.index, dtype=bool)
+        for t in cons["amenities_any"]:
+            tt = _norm_text(t)
+            if tt:
+                m_any |= df[col].str.contains(re.escape(tt), na=False)
+        mask &= m_any
+
+    if cons.get("amenities_not"):
+        col = "_amenities_text_norm"
+        if col not in df.columns:
+            df[col] = (
+                df.get("amenities", "").fillna("").astype(str)
+                + " " + df.get("description1", "").fillna("").astype(str)
+                + " " + df.get("reviews", "").fillna("").astype(str)
+                + " " + df.get("address", "").fillna("").astype(str)
+            ).apply(_norm_text)
+        for t in cons["amenities_not"]:
+            tt = _norm_text(t)
+            if tt:
+                mask &= ~df[col].str.contains(re.escape(tt), na=False)
+
     return df[mask].copy()
 
 
@@ -598,10 +787,13 @@ def hybrid_search_hotels(
     vector_db: FAISS,
     lex: LexicalIndex,
     top_k: int = DEFAULT_TOP_K,
+    history: Optional[List[Dict[str, Any]]] = None,
     filters: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
 
-    cons = _merge_constraints(_parse_constraints(user_query, thr), filters)
+    mem_cons = _constraints_from_history(history, thr) if history else _parse_constraints("", thr)
+    cons = _merge_constraints(mem_cons, _parse_constraints(user_query, thr))
+    cons = _merge_constraints(cons, filters)
 
     if not cons.get("district_nums"):
         name_map = _district_name_candidates(df)
@@ -752,6 +944,7 @@ def search_hotels_tool(
     vector_db: FAISS,
     lex: LexicalIndex,
     top_k: int = DEFAULT_TOP_K,
+    history: Optional[List[Dict[str, Any]]] = None,
     filters: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     hotels = hybrid_search_hotels(
@@ -761,6 +954,7 @@ def search_hotels_tool(
         vector_db=vector_db,
         lex=lex,
         top_k=top_k,
+        history=history,
         filters=filters,
     )
     return {"tool_name": "search_hotels_tool", "query": user_query, "results": hotels}
@@ -777,6 +971,7 @@ def chat_with_agent(
     df: Optional[pd.DataFrame] = None,
     thr: Optional[PriceThresholds] = None,
     lex: Optional[LexicalIndex] = None,
+    history: Optional[List[Dict[str, Any]]] = None,
     filters: Optional[Dict[str, Any]] = None,
     top_k: int = DEFAULT_TOP_K,
 ) -> Dict[str, Any]:
@@ -807,6 +1002,7 @@ def chat_with_agent(
         vector_db=vector_db,
         lex=lex,
         top_k=top_k,
+        history=history,
         filters=filters,
     )
 
