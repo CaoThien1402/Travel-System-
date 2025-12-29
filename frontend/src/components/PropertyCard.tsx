@@ -1,8 +1,10 @@
 import { Star, MapPin, Wifi, Coffee, Car, LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 interface PropertyCardProps {
+  id?: number;
   image: string;
   name: string;
   location: string;
@@ -14,6 +16,7 @@ interface PropertyCardProps {
 }
 
 const PropertyCard = ({
+  id,
   image,
   name,
   location,
@@ -23,6 +26,7 @@ const PropertyCard = ({
   originalPrice,
   amenities = [],
 }: PropertyCardProps) => {
+  const navigate = useNavigate();
   const [imgSrc, setImgSrc] = useState(image || "");
   const [isLoaded, setIsLoaded] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
@@ -136,7 +140,9 @@ const PropertyCard = ({
             className="bg-primary hover:bg-primary-hover text-primary-foreground"
             onClick={(e) => {
               e.stopPropagation();
-              // Get hotel id from parent component or URL
+              if (id != null) {
+                navigate(`/properties/${id}`);
+              }
             }}
           >
             Xem phòng
