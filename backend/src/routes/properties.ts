@@ -116,7 +116,7 @@ router.get('/', async (req: Request, res: Response) => {
     const hotels = await loadHotelsFromCSV();
     
     // Extract query parameters from URL
-    const { district, minPrice, maxPrice, minStar, search, limit } = req.query;
+    const { district, minPrice, maxPrice, minStar, search, limit, page, pageSize, noPagination } = req.query;
     
     let filteredHotels = hotels;
     
@@ -158,14 +158,38 @@ router.get('/', async (req: Request, res: Response) => {
       );
     }
     
-    // Apply limit if specified (for faster initial load)
-    let results = filteredHotels;
-    if (limit && !isNaN(Number(limit))) {
-      results = filteredHotels.slice(0, Number(limit));
+    // If noPagination=true, return all results (for FeaturedProperties)
+    if (noPagination === 'true') {
+      return res.status(200).json(filteredHotels);
     }
     
-    // Return filtered results
-    return res.status(200).json(results);
+    // Apply limit if specified (legacy support)
+    if (limit && !isNaN(Number(limit)) && !page) {
+      return res.status(200).json(filteredHotels.slice(0, Number(limit)));
+    }
+    
+    // Apply pagination (default: page 1, 20 items per page)
+    const totalCount = filteredHotels.length;
+    const currentPage = page ? Math.max(1, parseInt(page as string)) : 1;
+    const itemsPerPage = pageSize ? Math.min(50, parseInt(pageSize as string)) : 20;
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    const totalPages = Math.ceil(totalCount / itemsPerPage);
+    
+    const results = filteredHotels.slice(startIndex, endIndex);
+    
+    // Return paginated results with metadata
+    return res.status(200).json({
+      hotels: results,
+      pagination: {
+        page: currentPage,
+        pageSize: itemsPerPage,
+        totalCount: totalCount,
+        totalPages: totalPages,
+        hasNextPage: currentPage < totalPages,
+        hasPreviousPage: currentPage > 1
+      }
+    });
   } catch (error) {
     console.error('Error fetching hotels:', error);
     return res.status(500).json({ message: 'Failed to fetch hotels' });

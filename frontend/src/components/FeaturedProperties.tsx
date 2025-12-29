@@ -22,8 +22,8 @@ const FeaturedProperties = () => {
   useEffect(() => {
     const fetchFeatured = async () => {
       try {
-        // Fetch all hotels
-        const res = await fetch('http://localhost:5000/api/properties');
+        // Fetch all hotels with noPagination=true to get all data for featured selection
+        const res = await fetch('http://localhost:5000/api/properties?noPagination=true');
         if (!res.ok) throw new Error('Failed to load properties');
         const allHotels = (await res.json()) as Hotel[];
 

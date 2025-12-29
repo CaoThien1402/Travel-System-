@@ -4,6 +4,8 @@ import { MapPin, Star, Phone, Globe, ArrowLeft, Wifi, Car, Coffee, Dumbbell, Wav
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import HotelPOI from '../components/HotelPOI';
+import HotelDetailMap from '../components/HotelDetailMap';
+import { Button } from '@/components/ui/button';
 
 interface Hotel {
   id: number;
@@ -19,9 +21,9 @@ interface Hotel {
   url_google: string;
   website: string;
   phone: string;
-  price: number;
+  price: number | string;  // Can be number or string like "490000 - 1150000"
   imageUrl: string;
-  star: string;
+  star: number | string;   // Can be number (3) or string ("Khách sạn 3 sao")
   rank: number;
   totalScore: number;
   reviewsCount: number;
@@ -62,6 +64,8 @@ export default function HotelDetail() {
           throw new Error('Không thể tải thông tin khách sạn');
         }
         const data = await response.json();
+        console.log('Hotel data:', data);
+        console.log('Hotel lat:', data.lat, 'lng:', data.lng, 'price:', data.price);
         setHotel(data);
       } catch (err: any) {
         setError(err.message);
@@ -111,11 +115,27 @@ export default function HotelDetail() {
     );
   }
 
-  // Parse star rating
-  const starMatch = hotel.star?.match(/(\d+)/);
-  const starRating = starMatch ? parseInt(starMatch[1]) : 0;
+  // Parse star rating - handle both number and string
+  const parseStarRating = (star: number | string | undefined): number => {
+    if (!star) return 0;
+    if (typeof star === 'number') return star;
+    const match = star.toString().match(/(\d+)/);
+    return match ? parseInt(match[1]) : 0;
+  };
+  
+  const starRating = parseStarRating(hotel.star);
 
-  // Format price
+  // Parse price - handle price range like "490000 - 1150000"
+  const parsePrice = (priceStr: string | number): number => {
+    if (typeof priceStr === 'number') return priceStr;
+    if (!priceStr) return 0;
+    const match = priceStr.toString().match(/(\d+)/);
+    return match ? parseInt(match[1]) : 0;
+  };
+  
+  const hotelPrice = parsePrice(hotel.price);
+
+  // Format price for display
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(price);
   };
@@ -191,7 +211,7 @@ export default function HotelDetail() {
               {/* Price & Actions */}
               <div className="md:text-right">
                 <div className="text-3xl font-bold text-blue-600 mb-2">
-                  {formatPrice(hotel.price)}
+                  {formatPrice(hotelPrice)}
                   <span className="text-sm font-normal text-gray-500">/đêm</span>
                 </div>
                 <div className="flex flex-col gap-2">
@@ -234,6 +254,11 @@ export default function HotelDetail() {
           </div>
         )}
 
+        {/* DEBUG TEST SECTION - Should always show */}
+        <div className="bg-red-100 border-4 border-red-500 rounded-xl p-6 mt-6">
+          <h2 className="text-2xl font-bold text-red-900">🔴 DEBUG: If you see this, scroll is working!</h2>
+        </div>
+
         {/* Amenities */}
         {hotel.amenities && hotel.amenities.length > 0 && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mt-6">
@@ -253,8 +278,18 @@ export default function HotelDetail() {
         )}
 
         {/* POI - Points of Interest */}
-        {hotel.lat && hotel.lng && (
+        {hotel.lat !== undefined && hotel.lng !== undefined && hotel.lat !== 0 && hotel.lng !== 0 && (
           <HotelPOI lat={hotel.lat} lng={hotel.lng} />
+        )}
+
+        {/* Map with POI Markers */}
+        {hotel.lat !== undefined && hotel.lng !== undefined && hotel.lat !== 0 && hotel.lng !== 0 && (
+          <HotelDetailMap 
+            hotelName={hotel.hotelname} 
+            lat={hotel.lat} 
+            lng={hotel.lng} 
+            maxDistance={5}
+          />
         )}
 
         {/* Reviews */}
@@ -273,22 +308,6 @@ export default function HotelDetail() {
                 </div>
               ))}
             </div>
-          </div>
-        )}
-
-        {/* Google Maps Link */}
-        {hotel.url_google && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mt-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Vị trí</h2>
-            <a 
-              href={hotel.url_google}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800 font-medium"
-            >
-              <MapPin className="w-5 h-5" />
-              Xem trên Google Maps
-            </a>
           </div>
         )}
       </main>

@@ -43,9 +43,10 @@ export interface Hotel {
   url_google?: string;           // Google Maps URL
   website?: string;              // Hotel website
   phone?: string;                // Phone number
-  price: number;                 // Price per night in VND
+  price: number;                 // Price per night in VND (parsed from priceRange)
+  priceRange?: string;           // Original price range string like "490000 - 1150000"
   imageUrl?: string;             // Main image URL
-  star: number;                  // Star rating (1-5)
+  star: number;                  // Star rating (1-5) parsed from text
   rank?: number;                 // Ranking number
   totalScore?: number;           // Total review score
   oneStar?: number;              // Number of 1-star reviews

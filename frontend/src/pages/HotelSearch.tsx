@@ -63,13 +63,35 @@ interface FilterOptions {
 const HotelImage = ({ src, alt }: { src?: string; alt: string }) => {
   const [hasError, setHasError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [currentSrc, setCurrentSrc] = useState(src);
+  const [retryCount, setRetryCount] = useState(0);
+
+  // Fallback images
+  const fallbackImages = [
+    'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=400&q=80',
+    'https://images.unsplash.com/photo-1551882547-ff40c63fe5fa?w=400&q=80',
+    'https://images.unsplash.com/photo-1564501049412-61c2a3083791?w=400&q=80',
+  ];
 
   useEffect(() => {
     setHasError(false);
     setIsLoading(true);
+    setCurrentSrc(src);
+    setRetryCount(0);
   }, [src]);
 
-  if (!src || hasError) {
+  const handleError = () => {
+    if (retryCount < fallbackImages.length) {
+      // Try fallback image
+      setCurrentSrc(fallbackImages[retryCount]);
+      setRetryCount(prev => prev + 1);
+    } else {
+      setHasError(true);
+      setIsLoading(false);
+    }
+  };
+
+  if (!currentSrc || hasError) {
     return (
       <div className="w-full h-full flex items-center justify-center text-gray-400 bg-gray-100">
         <HotelIcon className="w-8 h-8" />
@@ -85,14 +107,13 @@ const HotelImage = ({ src, alt }: { src?: string; alt: string }) => {
         </div>
       )}
       <img
-        src={src}
+        src={currentSrc}
         alt={alt}
         className={`w-full h-full object-cover ${isLoading ? 'opacity-0' : 'opacity-100'}`}
+        referrerPolicy="no-referrer"
+        crossOrigin="anonymous"
         onLoad={() => setIsLoading(false)}
-        onError={() => {
-          setHasError(true);
-          setIsLoading(false);
-        }}
+        onError={handleError}
       />
     </>
   );
@@ -108,6 +129,12 @@ const HotelSearch = () => {
   const [minStars, setMinStars] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isSearching, setIsSearching] = useState(false);
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [isSemanticMode, setIsSemanticMode] = useState(false);
+  const pageSize = 20;
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [selectedDistrict, setSelectedDistrict] = useState<string>('all');
   const [selectedSearchString, setSelectedSearchString] = useState<string>('all');
@@ -202,14 +229,35 @@ const HotelSearch = () => {
 
   useEffect(() => {
     const fetchHotels = async () => {
+      // Skip fetching if in semantic search mode
+      if (isSemanticMode) return;
+      
+      setIsLoading(true);
       try {
-        const response = await fetch('http://localhost:5000/api/properties');
+        const response = await fetch(`http://localhost:5000/api/properties?page=${currentPage}&pageSize=${pageSize}`);
         const data = await response.json();
-        const hotelsArray = Array.isArray(data) ? data : [];
-        console.log('Loaded', hotelsArray.length, 'hotels from API');
-        setHotels(hotelsArray);
-        setFilteredHotels(hotelsArray);
-        setMapHotels(getFeaturedHotelsForMap(hotelsArray, 30));
+        
+        if (data.hotels && data.pagination) {
+          // Paginated response
+          const hotelsArray = Array.isArray(data.hotels) ? data.hotels : [];
+          console.log(`Loaded page ${currentPage}: ${hotelsArray.length} hotels (${data.pagination.totalCount} total)`);
+          setHotels(hotelsArray);
+          setFilteredHotels(hotelsArray);
+          // Show current page hotels on map (filter out invalid coordinates)
+          setMapHotels(hotelsArray.filter(h => h.lat !== 0 && h.lon !== 0));
+          setTotalPages(data.pagination.totalPages);
+          setTotalCount(data.pagination.totalCount);
+        } else {
+          // Legacy array response
+          const hotelsArray = Array.isArray(data) ? data : [];
+          console.log('Loaded', hotelsArray.length, 'hotels from API');
+          setHotels(hotelsArray);
+          setFilteredHotels(hotelsArray);
+          // Show current hotels on map
+          setMapHotels(hotelsArray.filter(h => h.lat !== 0 && h.lon !== 0));
+          setTotalCount(hotelsArray.length);
+          setTotalPages(1);
+        }
       } catch (error) {
         console.error('Error fetching hotels:', error);
         setHotels([]);
@@ -220,7 +268,7 @@ const HotelSearch = () => {
     };
 
     fetchHotels();
-  }, []);
+  }, [currentPage, isSemanticMode]);
 
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
     const R = 6371; // Radius of Earth in km
@@ -239,20 +287,60 @@ const HotelSearch = () => {
       // Turn off location filter
       setUseLocationFilter(false);
       setUserLocation(null);
-      applyLocalFilters(hotels);
+      // Reset to pagination mode
+      setIsSemanticMode(false);
+      setCurrentPage(1);
     } else {
       // Turn on location filter - get user location
       setGettingLocation(true);
       if ('geolocation' in navigator) {
         navigator.geolocation.getCurrentPosition(
-          (position) => {
+          async (position) => {
             const userPos: [number, number] = [
               position.coords.latitude,
               position.coords.longitude
             ];
             setUserLocation(userPos);
             setUseLocationFilter(true);
+            setShowMap(true); // Auto show map when location filter is on
             setGettingLocation(false);
+            
+            // Fetch all hotels and filter by distance
+            try {
+              const response = await fetch('http://localhost:5000/api/properties?noPagination=true');
+              const allHotels = await response.json();
+              
+              if (Array.isArray(allHotels)) {
+                // Filter hotels within maxDistance (use lat/lon from API)
+                const nearbyHotels = allHotels.filter((h: any) => {
+                  const hotelLat = h.lat || 0;
+                  const hotelLon = h.lon || h.lng || 0;
+                  if (hotelLat === 0 || hotelLon === 0) return false;
+                  const distance = calculateDistance(userPos[0], userPos[1], hotelLat, hotelLon);
+                  return distance <= maxDistance;
+                }).map((h: any) => ({
+                  ...h,
+                  // Normalize to use both lat/lon and lat/lng
+                  lng: h.lon || h.lng,
+                  lon: h.lon || h.lng,
+                }));
+                
+                console.log(`Found ${nearbyHotels.length} hotels within ${maxDistance}km of your location`);
+                setFilteredHotels(nearbyHotels);
+                setMapHotels(nearbyHotels);
+                setTotalCount(nearbyHotels.length);
+                setTotalPages(1);
+                setIsSemanticMode(true); // Use semantic mode to disable pagination
+                
+                // Show toast notification
+                toast({
+                  title: "📍 Đã tìm thấy khách sạn gần bạn!",
+                  description: `Hiển thị ${nearbyHotels.length} khách sạn trong bán kính ${maxDistance}km từ vị trí của bạn.`,
+                });
+              }
+            } catch (error) {
+              console.error('Error fetching nearby hotels:', error);
+            }
           },
           (error) => {
             console.error('Geolocation error:', error);
@@ -285,11 +373,14 @@ const HotelSearch = () => {
 
   const performSemanticSearch = async (query: string) => {
     if (!query.trim()) {
-      applyLocalFilters(hotels);
+      // Reset to pagination mode when search is cleared
+      setIsSemanticMode(false);
+      setCurrentPage(1);
       return;
     }
 
     setIsSearching(true);
+    setIsSemanticMode(true);
     
     try {
       console.log('Semantic Search:', query);
@@ -310,7 +401,7 @@ const HotelSearch = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           query: query.trim(),
-          top_k: 10,
+          top_k: 20, // Always get top 20 results sorted by cosine similarity
           min_price: minPrice > 0 ? minPrice : undefined,
           max_price: maxPrice < 10000000 ? maxPrice : undefined,
           min_star: minStars > 0 ? minStars : undefined,
@@ -321,16 +412,23 @@ const HotelSearch = () => {
       const data = await response.json();
       
       if (data.success && Array.isArray(data.hotels)) {
-        console.log('Found', data.hotels.length, 'results');
+        console.log('Found', data.hotels.length, 'results sorted by cosine similarity');
         setFilteredHotels(data.hotels);
-        setMapHotels(getFeaturedHotelsForMap(data.hotels, 30));
+        // Show search results on map
+        setMapHotels(data.hotels.filter(h => h.lat !== 0 && h.lon !== 0));
+        setTotalCount(data.hotels.length);
+        setTotalPages(1); // Semantic search returns all results in one page
       } else {
-        console.warn('Semantic search returned no results, using local filter');
-        applyLocalFilters(hotels);
+        console.warn('Semantic search returned no results');
+        setFilteredHotels([]);
+        setMapHotels([]);
+        setTotalCount(0);
       }
     } catch (error) {
       console.error('Semantic search error:', error);
-      applyLocalFilters(hotels);
+      setFilteredHotels([]);
+      setMapHotels([]);
+      setTotalCount(0);
     } finally {
       setIsSearching(false);
     }
@@ -389,7 +487,8 @@ const HotelSearch = () => {
     console.log('Filter results:', filtered.length, 'hotels');
 
     setFilteredHotels(filtered);
-    setMapHotels(getFeaturedHotelsForMap(filtered, 30));
+    // Show filtered hotels on map
+    setMapHotels(filtered.filter(h => h.lat !== 0 && h.lon !== 0));
   };
 
   const listPanelClass = showMap
@@ -693,7 +792,21 @@ const HotelSearch = () => {
                 <span>Đang tìm kiếm...</span>
               ) : (
                 <>
-                  Tìm thấy <span className="font-bold">{filteredHotels.length}</span> khách sạn
+                  {isSemanticMode ? (
+                    <>
+                      Tìm thấy <span className="font-bold">{totalCount}</span> khách sạn phù hợp
+                      <span className="ml-2 text-xs text-green-600">(sắp xếp theo độ liên quan)</span>
+                    </>
+                  ) : (
+                    <>
+                      Hiển thị <span className="font-bold">{filteredHotels.length}</span> / <span className="font-bold">{totalCount}</span> khách sạn
+                      {totalPages > 1 && (
+                        <span className="ml-2 text-xs text-gray-500">
+                          (Trang {currentPage}/{totalPages})
+                        </span>
+                      )}
+                    </>
+                  )}
                   {searchQuery.trim() && <span className="ml-2 text-xs text-blue-600">với "{searchQuery}"</span>}
                 </>
               )}
@@ -737,7 +850,7 @@ const HotelSearch = () => {
                                     ${selectedHotel?.id === hotel.id ? 'border-primary shadow-lg' : 'border-transparent'}
                                   `}
                                   onClick={() => {
-                                    navigate(`/properties/${hotel.id}`);
+                                    window.open(`/properties/${hotel.id}`, '_blank');
                                     setShowMobileList(false);
                                   }}
                                 >
@@ -791,7 +904,14 @@ const HotelSearch = () => {
                                             VND {hotel.price.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".")}
                                           </div>
                                         </div>
-                                        <Button size="sm" className="bg-primary hover:bg-primary/90 shrink-0 ml-2">
+                                        <Button 
+                                          size="sm" 
+                                          className="bg-primary hover:bg-primary/90 shrink-0 ml-2"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            window.open(`/properties/${hotel.id}`, '_blank');
+                                          }}
+                                        >
                                           Xem
                                         </Button>
                                       </div>
@@ -804,6 +924,75 @@ const HotelSearch = () => {
                         })}
                       </tbody>
                     </table>
+                    
+                    {/* Pagination Controls - Only show when not in semantic search mode */}
+                    {!isSemanticMode && totalPages > 1 && (
+                      <div className="flex items-center justify-center gap-2 mt-6 mb-4 p-3 bg-gray-50 rounded-lg border">
+                        <Button
+                          onClick={() => setCurrentPage(1)}
+                          disabled={currentPage === 1 || isLoading}
+                          variant="outline"
+                          size="sm"
+                          className="hidden sm:flex"
+                        >
+                          « Đầu
+                        </Button>
+                        <Button
+                          onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                          disabled={currentPage === 1 || isLoading}
+                          variant="outline"
+                          size="sm"
+                        >
+                          ← Trước
+                        </Button>
+                        
+                        <div className="flex items-center gap-1 px-3">
+                          {/* Page number buttons */}
+                          {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                            let pageNum;
+                            if (totalPages <= 5) {
+                              pageNum = i + 1;
+                            } else if (currentPage <= 3) {
+                              pageNum = i + 1;
+                            } else if (currentPage >= totalPages - 2) {
+                              pageNum = totalPages - 4 + i;
+                            } else {
+                              pageNum = currentPage - 2 + i;
+                            }
+                            return (
+                              <Button
+                                key={pageNum}
+                                onClick={() => setCurrentPage(pageNum)}
+                                variant={currentPage === pageNum ? "default" : "outline"}
+                                size="sm"
+                                className="w-8 h-8 p-0"
+                                disabled={isLoading}
+                              >
+                                {pageNum}
+                              </Button>
+                            );
+                          })}
+                        </div>
+                        
+                        <Button
+                          onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                          disabled={currentPage === totalPages || isLoading}
+                          variant="outline"
+                          size="sm"
+                        >
+                          Sau →
+                        </Button>
+                        <Button
+                          onClick={() => setCurrentPage(totalPages)}
+                          disabled={currentPage === totalPages || isLoading}
+                          variant="outline"
+                          size="sm"
+                          className="hidden sm:flex"
+                        >
+                          Cuối »
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

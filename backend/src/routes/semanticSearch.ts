@@ -18,14 +18,41 @@ const router = Router();
 const PYTHON_SCRIPT = path.join(__dirname, '..', 'python', 'semantic_search.py');
 
 // Timeout cho Python process (ms)
-const PYTHON_TIMEOUT = 60000; // 60 giây
+const PYTHON_TIMEOUT = 120000; // 120 giây (tăng lên cho lần đầu load model)
+
+/**
+ * Xác định Python command phù hợp với Windows
+ */
+function getPythonCommand(): string {
+  // Trên Windows, thử python3 trước, sau đó python
+  return process.platform === 'win32' ? 'python' : 'python3';
+}
 
 /**
  * Gọi Python script và trả về kết quả
  */
 function runPythonSearch(args: string[]): Promise<any> {
   return new Promise((resolve, reject) => {
-    const pythonProcess = spawn('python', [PYTHON_SCRIPT, ...args], {
+    const pythonCmd = getPythonCommand();
+    
+    // Quote path để handle dấu cách trong đường dẫn
+    const quotedScript = `"${PYTHON_SCRIPT}"`;
+    
+    // Quote các arguments có dấu cách hoặc ký tự đặc biệt
+    const quotedArgs = args.map(arg => {
+      if (arg.includes(' ') || arg.includes(',') || arg.includes('&')) {
+        return `"${arg}"`;
+      }
+      return arg;
+    });
+    
+    console.log(`[Python] Spawning: ${pythonCmd} ${quotedScript} ${quotedArgs.join(' ')}`);
+    
+    // Không dùng shell: true với args array - dùng command string thay vì
+    const fullCommand = `${pythonCmd} ${quotedScript} ${quotedArgs.join(' ')}`;
+    
+    const pythonProcess = spawn(fullCommand, {
+      shell: true, // Important for Windows
       timeout: PYTHON_TIMEOUT,
     });
 
@@ -49,16 +76,26 @@ function runPythonSearch(args: string[]): Promise<any> {
           const result = JSON.parse(stdout);
           resolve(result);
         } catch (e) {
-          reject(new Error(`Failed to parse Python output: ${stdout}`));
+          reject(new Error(`Failed to parse Python output: ${stdout.substring(0, 500)}`));
         }
       } else {
-        reject(new Error(`Python process exited with code ${code}: ${stderr}`));
+        const errorMsg = stderr || stdout || 'Unknown error';
+        reject(new Error(`Python process exited with code ${code}. Last output: ${errorMsg.substring(0, 500)}`));
       }
     });
 
     pythonProcess.on('error', (err) => {
-      reject(new Error(`Failed to start Python process: ${err.message}`));
+      reject(new Error(`Failed to start Python process: ${err.message}. Make sure Python is installed and in PATH.`));
     });
+
+    // Handle timeout explicitly
+    setTimeout(() => {
+      if (!pythonProcess.killed) {
+        console.error('[Python] Process timeout - killing process');
+        pythonProcess.kill();
+        reject(new Error(`Python process timeout after ${PYTHON_TIMEOUT}ms`));
+      }
+    }, PYTHON_TIMEOUT);
   });
 }
 

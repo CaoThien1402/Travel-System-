@@ -132,7 +132,13 @@ const PropertyCard = ({
               <span className="text-sm text-muted-foreground">/đêm</span>
             </div>
           </div>
-          <Button className="bg-primary hover:bg-primary-hover text-primary-foreground">
+          <Button 
+            className="bg-primary hover:bg-primary-hover text-primary-foreground"
+            onClick={(e) => {
+              e.stopPropagation();
+              // Get hotel id from parent component or URL
+            }}
+          >
             Xem phòng
           </Button>
         </div>
