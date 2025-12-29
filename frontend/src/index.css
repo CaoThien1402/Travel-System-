@@ -103,3 +103,26 @@ All colors MUST be HSL.
     letter-spacing: -0.011em;
   }
 }
+
+/* Fix Leaflet map z-index to not overlap navbar */
+.leaflet-container {
+  z-index: 0 !important;
+}
+
+.leaflet-pane,
+.leaflet-top,
+.leaflet-bottom {
+  z-index: 1 !important;
+}
+
+.leaflet-control {
+  z-index: 10 !important;
+}
+
+.leaflet-popup {
+  z-index: 20 !important;
+}
+
+.leaflet-popup-pane {
+  z-index: 30 !important;
+}
