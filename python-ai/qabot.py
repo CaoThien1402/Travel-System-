@@ -1067,12 +1067,25 @@ def hybrid_search_hotels(
 
 def _compact_list_answer(hotels: List[Dict[str, Any]], criteria_text: str = "") -> str:
     n = len(hotels)
-    head = f"Mình đã tìm thấy {n} lựa chọn phù hợp bên dưới"
-    if criteria_text:
-        head += f" (theo tiêu chí: {criteria_text})"
-    head += ":"
-    lines = [head]
 
+    # ✅ Mở bài “văn vẻ” nhưng ngắn
+    if criteria_text:
+        intro = (
+            "Chào bạn! 😊 Mình là trợ lý gợi ý khách sạn.\n"
+            f"Dựa trên tiêu chí bạn đang quan tâm (**{criteria_text}**), mình đã chọn ra những lựa chọn phù hợp nhất bên dưới:"
+        )
+    else:
+        intro = (
+            "Chào bạn! 😊 Mình là trợ lý gợi ý khách sạn.\n"
+            "Mình đã chọn ra một số lựa chọn phù hợp nhất bên dưới:"
+        )
+
+    lines = [intro, ""]  # dòng trống cho dễ nhìn
+
+    # ✅ Tiêu đề chuẩn
+    lines.append(f"Mình đã tìm thấy {n} lựa chọn phù hợp bên dưới:")
+
+    # ✅ Danh sách khách sạn
     for i, h in enumerate(hotels, 1):
         name = (h.get("hotelname") or h.get("name") or "").strip()
         district = str(h.get("district") or "—").split(",")[0].strip() or "—"
@@ -1090,6 +1103,7 @@ def _compact_list_answer(hotels: List[Dict[str, Any]], criteria_text: str = "") 
         link_txt = f" — 🔗 {detail}" if detail else ""
         lines.append(f"({i}) 🏨 {name} — 📍 {district} — 💰 {price_text}{rating_txt}{link_txt}")
 
+    # ✅ Câu chốt 1 câu duy nhất
     lines.append("Bạn muốn lọc theo *giá*, *rating* hay *tiện ích* (hồ bơi/wifi/bữa sáng/gym/đậu xe)?")
     return "\n".join(lines)
 
@@ -1099,29 +1113,30 @@ def _compact_list_answer(hotels: List[Dict[str, Any]], criteria_text: str = "") 
 # =========================
 
 def build_answer_chain(llm: ChatGoogleGenerativeAI):
-    template = """Bạn là trợ lý gợi ý khách sạn. Chỉ được dùng thông tin trong JSON, không bịa thêm.
+    template = """Bạn là trợ lý tư vấn khách sạn thân thiện, nói chuyện tự nhiên, văn vẻ vừa phải (không dài dòng).
+Chỉ được dùng thông tin trong JSON, tuyệt đối không bịa.
 
 Người dùng hỏi: "{user_input}"
+
+Tiêu chí hiện tại (nếu có): "{criteria_text}"
 
 DANH SÁCH KHÁCH SẠN (JSON):
 {hotels_json}
 
-YÊU CẦU:
-- Viết ngắn gọn, sạch sẽ, dễ nhìn.
-- Liệt kê đúng tất cả khách sạn trong JSON theo đúng thứ tự có sẵn.
-- Mỗi khách sạn đúng 1 dòng, không giải thích dài.
-
-FORMAT:
-Mình đã tìm thấy <N> lựa chọn phù hợp bên dưới:
-(1) 🏨 <Tên> — 📍 <Quận/Khu> — 💰 <price_text> — ⭐ <rating nếu có> — 🔗 <detail_url nếu có>
+YÊU CẦU CÁCH TRẢ LỜI:
+- Viết 1–2 câu mở bài: chào nhẹ, xác nhận tiêu chí nếu có (dựa trên criteria_text), tạo cảm giác tư vấn.
+- Sau đó xuống dòng, bắt buộc có đúng 1 dòng tiêu đề theo format:
+  "Mình đã tìm thấy <N> lựa chọn phù hợp bên dưới:"
+- Tiếp theo: liệt kê đúng TẤT CẢ khách sạn trong JSON theo đúng thứ tự, mỗi khách sạn đúng 1 dòng theo format:
+  (1) 🏨 <Tên> — 📍 <Quận/Khu> — 💰 <price_text> — ⭐ <rating nếu có> — 🔗 <detail_url nếu có>
+- Kết thúc bằng đúng 1 câu (không thêm câu khác):
+  "Bạn muốn lọc theo *giá*, *rating* hay *tiện ích* (hồ bơi/wifi/bữa sáng/gym/đậu xe)?"
 
 QUY TẮC:
 - Nếu thiếu rating: bỏ phần ⭐.
 - Nếu thiếu price_text: ghi "chưa cập nhật giá".
 - Nếu thiếu district: dùng "—".
 - Nếu thiếu detail_url: bỏ phần 🔗.
-- Kết thúc bằng đúng 1 câu:
-  "Bạn muốn lọc theo *giá*, *rating* hay *tiện ích* (hồ bơi/wifi/bữa sáng/gym/đậu xe)?"
 
 Bắt đầu trả lời:
 """
@@ -1159,7 +1174,39 @@ def search_hotels_tool(
 # =========================
 # MAIN ENTRY
 # =========================
+def _is_greeting_only(text: str) -> bool:
+    """
+    True nếu user chỉ chào hỏi (không kèm yêu cầu tìm khách sạn).
+    """
+    t = _norm_text(text or "")
+    if not t:
+        return False
 
+    # nếu có từ khoá về tìm kiếm khách sạn -> không coi là greeting-only
+    intents = [
+        "khach san", "hotel", "goi y", "tim", "search", "dat phong", "booking",
+        "quan", "district", "gan", "gia", "rating", "sao", "ho boi", "wifi", "an sang"
+    ]
+    if any(k in t for k in intents):
+        return False
+
+    greetings = {
+        "hi", "hello", "hey", "helo", "hilo",
+        "xin chao", "chao", "chao ban", "chao a", "chao ad",
+        "good morning", "good afternoon", "good evening",
+        "alo", "a l o",
+    }
+
+    # greeting-only thường rất ngắn
+    if len(t.split()) <= 4 and (t in greetings or any(t.startswith(g) for g in greetings)):
+        return True
+
+    return False
+
+
+def _greeting_reply() -> str:
+    # Ngắn gọn, không gợi ý khách sạn
+    return "Chào bạn! 😊, tôi là trợ lý ảo của hệ thống gợi ý du lịch 3M2T1STAY, rất vui được hỗ trợ bạn."
 def chat_with_agent(
     user_input: str,
     llm: Optional[ChatGoogleGenerativeAI] = None,
@@ -1172,6 +1219,11 @@ def chat_with_agent(
     history: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     user_input = (user_input or "").strip()
+    if _is_greeting_only(user_input):
+        return {
+            "answer": _greeting_reply(),
+            "tool_result": {"tool_name": "greeting", "query": user_input, "results": []},
+        }
     if not user_input:
         raise ValueError("user_input trống – hãy nhập câu hỏi.")
 
@@ -1220,29 +1272,9 @@ def chat_with_agent(
 
     hotels_json = json.dumps(hotels, ensure_ascii=False, indent=2)
 
-    answer_chain = build_answer_chain(llm)
-    answer_text = answer_chain.invoke(
-        {
-            "user_input": user_input,
-            "hotels_json": hotels_json,
-        }
-    )
-    answer_text = (answer_text or "").strip()
-
-    # ✅ 1) Đè tiêu đề về đúng expected (LLM hay bịa 11/12)
-    answer_text = re.sub(
-        r"^Mình đã tìm thấy\s+\d+\s+lựa chọn.*$",
-        f"Mình đã tìm thấy {expected} lựa chọn phù hợp bên dưới" + (f" (theo tiêu chí: {criteria_text})" if criteria_text else "") + ":",
-        answer_text,
-        flags=re.MULTILINE,
-    )
-
-    # ✅ 2) Nếu số dòng list không đúng expected -> fallback deterministic
-    got = len(re.findall(r"^\(\d+\)\s", answer_text, flags=re.MULTILINE))
-    if expected > 0 and got != expected:
-        answer_text = _compact_list_answer(hotels[:expected], criteria_text=criteria_text)
-
+    answer_text = _compact_list_answer(hotels[:expected], criteria_text=criteria_text)
     return {"answer": answer_text, "tool_result": tool_result}
+
 
 
 if __name__ == "__main__":
