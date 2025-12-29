@@ -1065,27 +1065,62 @@ def hybrid_search_hotels(
 # ✅ Deterministic list answer (fallback)
 # =========================
 
+def _pick_amenities_brief(h: Dict[str, Any], max_items: int = 4) -> str:
+    """
+    Trả về chuỗi tiện ích đẹp (không còn kiểu ['...']).
+    """
+    raw = h.get("amenities") or ""
+    if not raw:
+        return "—"
+
+    s = str(raw).strip()
+
+    # Nếu là list dạng "['a', 'b']" => parse JSON-like
+    try:
+        # normalize dấu nháy đơn -> nháy kép để json.loads
+        if s.startswith("[") and s.endswith("]"):
+            s2 = s.replace("'", '"')
+            arr = json.loads(s2)
+            if isinstance(arr, list):
+                parts = [str(x).strip() for x in arr if str(x).strip()]
+            else:
+                parts = []
+        else:
+            parts = []
+    except Exception:
+        parts = []
+
+    if not parts:
+        # fallback: split theo dấu phẩy / xuống dòng / chấm phẩy
+        parts = re.split(r"[,\n;/•]+", s)
+        parts = [p.strip() for p in parts if p.strip()]
+
+    if not parts:
+        return "—"
+
+    parts = parts[:max_items]
+    return " • ".join(parts) + (" • …" if len(parts) == max_items else "")
+
+
+
 def _compact_list_answer(hotels: List[Dict[str, Any]], criteria_text: str = "") -> str:
     n = len(hotels)
 
-    # ✅ Mở bài “văn vẻ” nhưng ngắn
+    # ✅ Mở bài gọn gàng
     if criteria_text:
         intro = (
             "Chào bạn! 😊 Mình là trợ lý gợi ý khách sạn.\n"
-            f"Dựa trên tiêu chí bạn đang quan tâm (**{criteria_text}**), mình đã chọn ra những lựa chọn phù hợp nhất bên dưới:"
+            f"Mình đã lọc theo tiêu chí **{criteria_text}** và chọn ra các gợi ý nổi bật bên dưới:"
         )
     else:
         intro = (
             "Chào bạn! 😊 Mình là trợ lý gợi ý khách sạn.\n"
-            "Mình đã chọn ra một số lựa chọn phù hợp nhất bên dưới:"
+            "Mình đã chọn ra một vài gợi ý nổi bật bên dưới:"
         )
 
-    lines = [intro, ""]  # dòng trống cho dễ nhìn
+    lines = [intro, ""]
+    lines.append(f"Mình đã tìm thấy {n} lựa chọn phù hợp:")
 
-    # ✅ Tiêu đề chuẩn
-    lines.append(f"Mình đã tìm thấy {n} lựa chọn phù hợp bên dưới:")
-
-    # ✅ Danh sách khách sạn
     for i, h in enumerate(hotels, 1):
         name = (h.get("hotelname") or h.get("name") or "").strip()
         district = str(h.get("district") or "—").split(",")[0].strip() or "—"
@@ -1096,16 +1131,30 @@ def _compact_list_answer(hotels: List[Dict[str, Any]], criteria_text: str = "") 
         rating_txt = ""
         try:
             if rating is not None and rating == rating:
-                rating_txt = f" — ⭐ {float(rating):.1f}"
+                rating_txt = f" ⭐ {float(rating):.1f}"
         except Exception:
             rating_txt = ""
 
-        link_txt = f" — 🔗 {detail}" if detail else ""
-        lines.append(f"({i}) 🏨 {name} — 📍 {district} — 💰 {price_text}{rating_txt}{link_txt}")
+        link_txt = f" 🔗 {detail}" if detail else ""
 
-    # ✅ Câu chốt 1 câu duy nhất
-    lines.append("Bạn muốn lọc theo *giá*, *rating* hay *tiện ích* (hồ bơi/wifi/bữa sáng/gym/đậu xe)?")
-    return "\n".join(lines)
+        # ✅ Dòng 1: thông tin chính
+        lines.append(f"**({i}) {name}**")
+        lines.append(f"   📍 {district}  |  💰 {price_text}  |{rating_txt}{link_txt}")
+
+        # ✅ Dòng 2: tiện ích + gần đâu (không có nhận xét)
+        amen = _pick_amenities_brief(h, max_items=4)
+        try:
+            near = _nearby_attractions(h)
+        except Exception:
+            near = "—"
+
+        lines.append(f"   🧰 Tiện ích: {amen}")
+        lines.append(f"   🗺️ Gần: {near}")
+        lines.append("")  # dòng trống tách block cho dễ đọc
+
+    # ✅ Câu chốt 1 câu
+    lines.append("Bạn muốn lọc thêm theo *giá*, *rating* hay *tiện ích* (hồ bơi/wifi/bữa sáng/gym/đậu xe)?")
+    return "\n".join(lines).strip()
 
 
 # =========================
